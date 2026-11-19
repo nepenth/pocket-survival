@@ -1,4 +1,7 @@
 body.map-page { padding: 0; overflow: hidden; height: 100vh; }
+/* No text selection or iOS callout menu when holding a finger on the map or its buttons. */
+body.map-page, body.map-page * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body.map-page .leaflet-popup-content, body.map-page .coords { -webkit-user-select: text; user-select: text; }
 #map { position: absolute; inset: 0; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg); }
 
 .map-btn {

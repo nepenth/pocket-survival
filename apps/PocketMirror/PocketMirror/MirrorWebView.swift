@@ -2,33 +2,60 @@ import CoreLocation
 import SwiftUI
 import WebKit
 
-/// Full-screen browser for the mirror, with a small toolbar.
+/// Full-screen browser for the mirror. Toolbar: back, forward, home, reload, settings.
 struct MirrorBrowser: View {
     let url: URL
-    let onClose: () -> Void
+    let isRunning: Bool
+    /// Changes whenever the served content changes (e.g. another folder chosen): reload then.
+    let reloadToken: Int
+    let onSettings: () -> Void
     @StateObject private var controller = WebController()
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 22) {
-                Button(action: onClose) { Text("Done").fontWeight(.semibold) }
-                Spacer()
-                Button(action: { controller.webView.goBack() }) { Image(systemName: "chevron.left") }
-                    .disabled(!controller.canGoBack)
-                Button(action: { controller.webView.goForward() }) { Image(systemName: "chevron.right") }
-                    .disabled(!controller.canGoForward)
-                Button(action: { controller.webView.load(URLRequest(url: url)) }) { Image(systemName: "house") }
-                Button(action: { controller.webView.reload() }) { Image(systemName: "arrow.clockwise") }
+            ZStack {
+                WebViewRepresentable(webView: controller.webView)
+                if !isRunning || controller.loadFailed {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text(isRunning ? "Loading…" : "Starting…")
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemBackground))
+                }
             }
-            .font(.body)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color(.secondarySystemBackground))
             Divider()
-            WebViewRepresentable(webView: controller.webView)
-                .edgesIgnoringSafeArea(.bottom)
+            HStack {
+                toolbarButton("chevron.left", "Back") { controller.webView.goBack() }
+                    .disabled(!controller.canGoBack)
+                toolbarButton("chevron.right", "Forward") { controller.webView.goForward() }
+                    .disabled(!controller.canGoForward)
+                toolbarButton("house", "Home") { controller.webView.load(URLRequest(url: url)) }
+                toolbarButton("arrow.clockwise", "Reload") { controller.webView.reload() }
+                toolbarButton("gearshape", "Settings", action: onSettings)
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+            .background(Color(.secondarySystemBackground).edgesIgnoringSafeArea(.bottom))
         }
-        .onAppear { controller.load(url) }
+        .onAppear { if isRunning { controller.load(url) } }
+        .onChange(of: isRunning) { running in
+            if running { controller.load(url, force: controller.loadFailed) }
+        }
+        .onChange(of: reloadToken) { _ in
+            if isRunning { controller.webView.load(URLRequest(url: url)) }
+        }
+    }
+
+    private func toolbarButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .regular))
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .accessibility(label: Text(label))
     }
 }
 
@@ -43,6 +70,8 @@ final class WebController: NSObject, ObservableObject, WKNavigationDelegate {
     let webView: WKWebView
     @Published var canGoBack = false
     @Published var canGoForward = false
+    /// The first load can race the server starting; show "Loading…" and retry when it's up.
+    @Published var loadFailed = false
     private let location = LocationBridge()
     private var observations: [NSKeyValueObservation] = []
 
@@ -54,6 +83,7 @@ final class WebController: NSObject, ObservableObject, WKNavigationDelegate {
         config.userContentController.add(location, name: LocationBridge.messageName)
         webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
+        webView.allowsLinkPreview = false // long-press is used by the map, not link previews
         super.init()
         location.webView = webView
         webView.navigationDelegate = self
@@ -67,8 +97,19 @@ final class WebController: NSObject, ObservableObject, WKNavigationDelegate {
         ]
     }
 
-    func load(_ url: URL) {
-        if webView.url == nil { webView.load(URLRequest(url: url)) }
+    func load(_ url: URL, force: Bool = false) {
+        if webView.url == nil || force {
+            loadFailed = false
+            webView.load(URLRequest(url: url))
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if (error as NSError).code != NSURLErrorCancelled { loadFailed = true }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loadFailed = false
     }
 
     /// Links to other hosts (e.g. a web link inside an article) can't work offline; open them

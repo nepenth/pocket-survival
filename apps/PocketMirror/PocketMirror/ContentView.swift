@@ -2,29 +2,31 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+/// The app opens straight into the mirror (launcher, maps, library…); the gear opens settings.
 struct ContentView: View {
     @EnvironmentObject var model: MirrorModel
-    @State private var showingBrowser = false
+    @State private var showingSettings = false
+
+    var body: some View {
+        MirrorBrowser(url: model.localURL, isRunning: model.isRunning, reloadToken: model.contentVersion,
+                      onSettings: { showingSettings = true })
+            .sheet(isPresented: $showingSettings) {
+                SettingsView(onDone: { showingSettings = false })
+                    .environmentObject(model)
+            }
+    }
+}
+
+struct SettingsView: View {
+    @EnvironmentObject var model: MirrorModel
+    let onDone: () -> Void
     @State private var showingPicker = false
 
     var body: some View {
         NavigationView {
             Form {
-                Section {
-                    Button(action: { showingBrowser = true }) {
-                        HStack {
-                            Image(systemName: "safari")
-                            Text("Open Mirror")
-                                .fontWeight(.semibold)
-                        }
-                        .font(.title3)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .disabled(!model.isRunning)
-                }
-
                 Section(header: Text("Content"),
-                        footer: Text("Maps, library and books are copied onto the phone, never downloaded by the app on its own. Connect the phone to a Mac, open it in Finder, choose Files › Pocket Mirror and drag the folders in (for example maps). Or pick a folder in the Files app.")) {
+                        footer: Text("Maps, library and books are copied onto the phone from a computer (see Receive Files below), never downloaded by the app on its own. Or pick a folder in the Files app.")) {
                     HStack {
                         Text("Serving")
                         Spacer()
@@ -43,7 +45,7 @@ struct ContentView: View {
                 }
 
                 Section(header: Text("Server"),
-                        footer: Text("The mirror works fully offline. iOS pauses the server about 30 seconds after you leave the app, so use Open Mirror rather than Safari.")) {
+                        footer: Text("Everything works fully offline. iOS pauses the server about 30 seconds after you leave the app, so Safari works only briefly; use this app.")) {
                     HStack(spacing: 10) {
                         Circle()
                             .fill(model.isRunning ? Color.green : Color.red)
@@ -86,12 +88,14 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationBarTitle("Pocket Mirror")
+            .navigationBarTitle("Settings", displayMode: .inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", action: onDone)
+                }
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
-        .fullScreenCover(isPresented: $showingBrowser) {
-            MirrorBrowser(url: model.localURL) { showingBrowser = false }
-        }
         .sheet(isPresented: $showingPicker) {
             FolderPicker { url in
                 showingPicker = false

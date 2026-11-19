@@ -23,6 +23,8 @@ final class MirrorModel: ObservableObject {
         didSet { if lanEnabled != oldValue { restartServer() } }
     }
     @Published var problem: String?
+    /// Bumped when the served folder changes, so the browser reloads.
+    @Published private(set) var contentVersion = 0
     /// Lets a computer send files into the content folder (see tools/push-content.sh). Off at every
     /// launch; while on, the screen stays awake so iOS doesn't suspend the app mid-transfer.
     @Published var uploadsEnabled = false {
@@ -79,6 +81,7 @@ final class MirrorModel: ObservableObject {
         source = newSource
         UserDefaults.standard.set(newSource.rawValue, forKey: Self.sourceKey)
         restartServer()
+        contentVersion += 1
     }
 
     /// Saves a folder chosen in the document picker so it can be reopened on later launches.

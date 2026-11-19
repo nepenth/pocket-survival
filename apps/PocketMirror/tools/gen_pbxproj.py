@@ -9,7 +9,7 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "PocketMirror.xcodeproj", "project.pbxproj")
 
-MARKETING_VERSION = "0.3.0"
+MARKETING_VERSION = "0.4.0"
 BUNDLE_ID = "net.pocketsurvival.mirror"
 
 # (file name, subgroup under PocketMirror/ or None)

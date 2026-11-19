@@ -146,7 +146,32 @@
     map.on('dragstart', function () { if (follow) { follow = false; setButton(); } });
 
     // Long-press (or right-click) anywhere: that point's coordinates, and distance from you.
-    map.on('contextmenu', function (e) {
+    // iOS Safari/WKWebView never fires 'contextmenu' for a long touch, so time it ourselves.
+    map.on('contextmenu', function (e) { showPoint(e.latlng); });
+    (function () {
+      var el = map.getContainer(), timer = null, startX = 0, startY = 0;
+      function cancel() { if (timer) { clearTimeout(timer); timer = null; } }
+      el.addEventListener('touchstart', function (ev) {
+        cancel();
+        if (ev.touches.length !== 1) return; // pinch-zoom etc.
+        var t = ev.touches[0];
+        startX = t.clientX; startY = t.clientY;
+        timer = setTimeout(function () {
+          timer = null;
+          var rect = el.getBoundingClientRect();
+          showPoint(map.containerPointToLatLng([startX - rect.left, startY - rect.top]));
+        }, 550);
+      }, { passive: true });
+      el.addEventListener('touchmove', function (ev) {
+        var t = ev.touches[0];
+        if (!t || Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) cancel();
+      }, { passive: true });
+      el.addEventListener('touchend', cancel, { passive: true });
+      el.addEventListener('touchcancel', cancel, { passive: true });
+    })();
+
+    function showPoint(latlng) {
+      var e = { latlng: latlng };
       var text = '<b>' + formatLatLng(e.latlng.lat, e.latlng.lng) + '</b>';
       if (lastFix) {
         var meters = lastFix.latlng.distanceTo(e.latlng);
@@ -157,7 +182,7 @@
           ' at ' + Math.round(bearing) + '° ' + compass(bearing) + ' from you';
       }
       L.popup().setLatLng(e.latlng).setContent(text).openOn(map);
-    });
+    }
 
     function bearingDeg(a, b) {
       var toRad = Math.PI / 180, lat1 = a.lat * toRad, lat2 = b.lat * toRad, dLng = (b.lng - a.lng) * toRad;
