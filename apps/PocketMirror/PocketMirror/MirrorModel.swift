@@ -166,9 +166,10 @@ final class MirrorModel: ObservableObject {
             .sorted()
             .map { folder.appendingPathComponent($0).path }
         let lan = lanEnabled
+        let port = Self.libraryPort
         libraryStatus = zims.isEmpty ? "No archives in the library folder" : "Opening \(zims.count) archives…"
         kiwixQueue.async { [kiwix] in
-            let opened = zims.isEmpty ? 0 : kiwix.start(withZimPaths: zims, port: Self.libraryPort, lan: lan)
+            let opened = zims.isEmpty ? 0 : kiwix.start(withZimPaths: zims, port: port, lan: lan)
             if zims.isEmpty { kiwix.stop() }
             let status = zims.isEmpty ? "No archives in the library folder"
                 : opened > 0 ? "\(opened) archive\(opened == 1 ? "" : "s") ready" + (opened < zims.count ? " (\(zims.count - opened) unreadable)" : "")
@@ -222,3 +223,6 @@ final class MirrorModel: ObservableObject {
         return nil
     }
 }
+
+/// All calls go through `MirrorModel.kiwixQueue`, one at a time.
+extension KiwixServer: @unchecked Sendable {}
