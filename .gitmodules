@@ -1,0 +1,3 @@
+[submodule "apps/PocketAssistant/llama.cpp"]
+	path = apps/PocketAssistant/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git

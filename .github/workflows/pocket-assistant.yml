@@ -1,0 +1,86 @@
+name: Pocket Assistant
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/PocketAssistant/**"
+      - "ci/**"
+      - ".github/workflows/pocket-assistant.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: apps/PocketAssistant
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select Xcode 16.4
+        run: |
+          # Xcode 26+ only supports iOS 15+ deployment targets; the target phone runs iOS 14.7.1.
+          XCODE_PATH=/Applications/Xcode_16.4.app
+          test -d "$XCODE_PATH" || { echo "::error::$XCODE_PATH not found on runner"; exit 1; }
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "iphoneos SDK minimum deployment target: $(plutil -extract SupportedTargets.iphoneos.MinimumDeploymentTarget raw "$SDK/SDKSettings.plist")"
+          echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+
+      - name: Build llama.cpp xcframework (iPhone 11 / A13 only)
+        run: |
+          # iOS device slice only, iOS 14.0, CPU-only (no Metal, no Accelerate BLAS),
+          # CPU code compiled for the A13. See ci/build-llama-iphone11.sh for why.
+          ci/build-llama-iphone11.sh
+          ls -la llama.cpp/build-apple/llama.xcframework/
+
+      - name: Build app
+        run: |
+          xcodebuild build \
+            -project llama.swiftui.xcodeproj \
+            -scheme llama.swiftui \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            -derivedDataPath build
+
+      - name: Package IPA
+        run: |
+          APP_PATH=$(find build -name "*.app" -type d -path "*Release-iphoneos*" | head -1)
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          VERSION=$(plutil -extract CFBundleShortVersionString raw Payload/*.app/Info.plist)
+          BUILD=$(plutil -extract CFBundleVersion raw Payload/*.app/Info.plist)
+          echo "App version $VERSION (build $BUILD)"
+          [ "$BUILD" = "$BUILD_NUMBER" ] || { echo "::error::build number is $BUILD"; exit 1; }
+          zip -qr "PocketAssistant-$VERSION-build$BUILD.ipa" Payload/
+
+      - name: Verify iOS 14 compatibility
+        run: |
+          APP=$(ls -d Payload/*.app | head -1)
+          FW="$APP/Frameworks/llama.framework/llama"
+          echo "Weak imports in llama.framework:"; nm -m "$FW" | grep "(undefined) weak" || true
+          # Accelerate's NEWLAPACK/ILP64 symbols are iOS 16.4+ and NULL on iOS 14 (crash 2026-11-19).
+          if nm -m "$FW" | grep -E 'NEWLAPACK|ILP64'; then
+            echo "::error::llama.framework links iOS 16.4+ Accelerate symbols"; exit 1
+          fi
+          # CPU-only build for the A13: the Metal backend must not be compiled in.
+          if nm "$FW" | grep -q ggml_backend_metal_reg; then
+            echo "::error::Metal backend is still linked"; exit 1
+          fi
+          "$GITHUB_WORKSPACE/ci/verify-ios14.sh" "$APP"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketAssistant-ipa
+          path: apps/PocketAssistant/PocketAssistant-*.ipa
