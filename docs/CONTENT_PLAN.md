@@ -68,7 +68,19 @@ fallback is a small Swift ZIM reader written for this app, with title search onl
 - **Layers:**
   - the chosen region in full detail, up to zoom 15 (street level)
   - a US backdrop up to about zoom 8
-- **Size:** typically 0.5–3 GB per region. I'll measure the real size once the region is picked.
+- **Area: New England** (ME, NH, VT, MA, RI, CT). Sizes were measured with
+  `pmtiles extract --dry-run` against the 2026-11-18 world build (basemap v4.15.2), reading only the
+  file indexes:
+
+  | Layer | Area (bbox W,S,E,N) | Zooms | Size |
+  |---|---|---|---|
+  | **New England, street level** | -73.75,40.95,-66.85,47.50 | 0–15 | **1.2 GB** |
+  | **Wider Northeast**: NY, NJ, PA, southern Quebec and New Brunswick (roads and towns for routes out of the region) | -80.6,39.5,-63.5,48.5 | 0–12 | 416 MB |
+  | **Continental US and southern Canada backdrop** | -125,24,-66,50 | 0–9 | 164 MB |
+
+  That's **about 1.8 GB** in total; zoom 15 is the most detailed level in this map data. Smaller
+  alternatives for New England: zoom 14 is 549 MB and zoom 13 is 266 MB. The map page stacks the three
+  layers, using the most detailed one that covers the view.
 - **Attribution:** "© OpenStreetMap contributors" on the map, as the OpenStreetMap license requires.
 
 To check in phase 3:
