@@ -6,7 +6,7 @@ phone with no internet after setup: no accounts, no tracking.
 | App | Folder | Status |
 |---|---|---|
 | **Pocket Assistant**: on-device AI chat (llama.cpp, small GGUF models) | [`apps/PocketAssistant`](apps/PocketAssistant) | In use |
-| **Pocket Mirror**: offline maps with GPS, reference library (ZIM), survival guide and books | `apps/PocketMirror` | Planned, see [docs/ROADMAP.md](docs/ROADMAP.md) |
+| **Pocket Mirror**: offline maps with GPS, reference library (ZIM), survival guide and books | [`apps/PocketMirror`](apps/PocketMirror) | Phase 1 (server and app shell), see [docs/ROADMAP.md](docs/ROADMAP.md) |
 
 ## Target device and build rules
 

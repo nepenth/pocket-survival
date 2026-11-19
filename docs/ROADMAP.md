@@ -26,7 +26,7 @@
   - all of it copied to the phone with Finder or the Files app
 
 **Phases:**
-1. **App skeleton and server.**
+1. **App skeleton and server** (0.1.0: built; waiting on the phone test).
    - Embedded server with tested byte ranges: mid-file, suffix and open-ended ranges on a multi-GB file.
    - Folder picker with saved bookmarks, WKWebView, LAN toggle.
    - CI workflow with the iOS 14 checks.

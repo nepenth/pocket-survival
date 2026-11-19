@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged with the keys Xcode generates from INFOPLIST_KEY_* build settings. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- The mirror is served over plain http from 127.0.0.1 (and the LAN when sharing is on). -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Shows your position on the offline map. Location stays on this phone.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Lets other devices on your Wi-Fi browse the mirror when you turn on sharing.</string>
+	<!-- Shows the app's Documents folder in Finder and the Files app, for copying content in. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
+</plist>

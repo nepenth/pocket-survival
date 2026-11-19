@@ -1,0 +1,73 @@
+name: Pocket Mirror
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/PocketMirror/**"
+      - "ci/**"
+      - ".github/workflows/pocket-mirror.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: apps/PocketMirror
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 16.4
+        run: |
+          # Xcode 26+ only supports iOS 15+ deployment targets; the target phone runs iOS 14.7.1.
+          XCODE_PATH=/Applications/Xcode_16.4.app
+          test -d "$XCODE_PATH" || { echo "::error::$XCODE_PATH not found on runner"; exit 1; }
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
+
+      - name: Byte-range tests (server code on macOS, 3 GiB file)
+        run: Tests/range-test.sh
+
+      - name: Project file is up to date
+        run: |
+          python3 tools/gen_pbxproj.py
+          git diff --exit-code -- PocketMirror.xcodeproj/project.pbxproj
+
+      - name: Build app
+        run: |
+          xcodebuild build \
+            -project PocketMirror.xcodeproj \
+            -scheme PocketMirror \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            -derivedDataPath build
+
+      - name: Package IPA
+        run: |
+          APP_PATH=$(find build -name "PocketMirror.app" -type d -path "*Release-iphoneos*" | head -1)
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          VERSION=$(plutil -extract CFBundleShortVersionString raw Payload/*.app/Info.plist)
+          BUILD=$(plutil -extract CFBundleVersion raw Payload/*.app/Info.plist)
+          echo "App version $VERSION (build $BUILD)"
+          [ "$BUILD" = "${{ github.run_number }}" ] || { echo "::error::build number is $BUILD"; exit 1; }
+          zip -qr "PocketMirror-$VERSION-build$BUILD.ipa" Payload/
+
+      - name: Verify iOS 14 compatibility
+        run: |
+          APP=$(ls -d Payload/*.app | head -1)
+          echo "Weak imports:"; nm -m "$APP/PocketMirror" | grep "(undefined) weak" || true
+          "$GITHUB_WORKSPACE/ci/verify-ios14.sh" "$APP"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketMirror-ipa
+          path: apps/PocketMirror/PocketMirror-*.ipa

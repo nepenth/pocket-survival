@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pocket Mirror</title>
+<style>
+  :root { --bg:#f2f3f5; --card:#ffffff; --text:#14181c; --muted:#5b6670; --accent:#e8822e; --ok:#2e9e5b; --bad:#d64545; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0d1418; --card:#18232a; --text:#e9eef1; --muted:#9aa8b2; --accent:#f5923a; --ok:#4cc27e; --bad:#ff6b6b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:17px/1.45 -apple-system, system-ui, sans-serif;
+         padding: max(16px, env(safe-area-inset-top)) 16px 32px; }
+  h1 { font-size:28px; margin:8px 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .tile { background:var(--card); border-radius:16px; padding:20px 16px; min-height:110px; display:flex;
+          flex-direction:column; justify-content:space-between; color:inherit; text-decoration:none; }
+  .tile b { font-size:20px; }
+  .tile span { color:var(--muted); font-size:15px; }
+  h2 { font-size:20px; margin:28px 0 10px; }
+  .check { background:var(--card); border-radius:12px; padding:14px 16px; margin-bottom:10px; }
+  .row { display:flex; align-items:center; gap:10px; }
+  .dot { width:12px; height:12px; border-radius:50%; background:var(--muted); flex:none; }
+  .dot.ok { background:var(--ok); } .dot.bad { background:var(--bad); }
+  .detail { color:var(--muted); font-size:15px; margin-top:4px; word-break:break-word; }
+  button { font:inherit; font-weight:600; color:#fff; background:var(--accent); border:0; border-radius:10px;
+           padding:10px 16px; margin-top:10px; }
+</style>
+</head>
+<body>
+  <h1>Pocket Mirror</h1>
+  <p class="sub">Built-in sample. Your own content (maps, library, guide, books) replaces this page.</p>
+
+  <div class="grid">
+    <div class="tile"><b>Maps</b><span>Coming in phase 3</span></div>
+    <div class="tile"><b>Library</b><span>Coming in phase 2</span></div>
+    <div class="tile"><b>Guide</b><span>Coming in phase 4</span></div>
+    <div class="tile"><b>Books</b><span>Coming in phase 4</span></div>
+  </div>
+
+  <h2>Phone checks</h2>
+  <div class="check"><div class="row"><div class="dot ok"></div><b>Page served by the app</b></div>
+    <div class="detail" id="where"></div></div>
+  <div class="check"><div class="row"><div class="dot" id="rangeDot"></div><b>Byte-range reads</b></div>
+    <div class="detail" id="rangeDetail">Testing…</div></div>
+  <div class="check"><div class="row"><div class="dot" id="gpsDot"></div><b>GPS position (works offline)</b></div>
+    <div class="detail" id="gpsDetail">Tap to ask for your position. Works in airplane mode; outdoors gives the first fix fastest.</div>
+    <button id="gpsButton">Find my position</button></div>
+
+<script>
+  document.getElementById('where').textContent = location.href + ' · ' + new Date().toLocaleString();
+
+  // Line n of range-sample.txt starts at byte n*132 ("000123 " + 124 letters + newline).
+  (function () {
+    var dot = document.getElementById('rangeDot'), out = document.getElementById('rangeDetail');
+    var start = 2500 * 132, end = start + 131;
+    fetch('range-sample.txt', { headers: { Range: 'bytes=' + start + '-' + end }, cache: 'no-store' })
+      .then(function (r) { return r.text().then(function (t) { return { r: r, t: t }; }); })
+      .then(function (x) {
+        var good = x.r.status === 206 && x.t.indexOf('002500 ') === 0 && x.t.length === 132;
+        dot.className = 'dot ' + (good ? 'ok' : 'bad');
+        out.textContent = (good ? 'OK: ' : 'Unexpected: ') + 'HTTP ' + x.r.status + ', ' +
+          (x.r.headers.get('Content-Range') || 'no Content-Range') + ', got "' + x.t.slice(0, 12) + '…"';
+      })
+      .catch(function (e) { dot.className = 'dot bad'; out.textContent = 'Failed: ' + e; });
+  })();
+
+  document.getElementById('gpsButton').onclick = function () {
+    var dot = document.getElementById('gpsDot'), out = document.getElementById('gpsDetail');
+    if (!navigator.geolocation) { dot.className = 'dot bad'; out.textContent = 'No location support here.'; return; }
+    out.textContent = 'Waiting for a fix…';
+    navigator.geolocation.getCurrentPosition(function (p) {
+      dot.className = 'dot ok';
+      out.textContent = p.coords.latitude.toFixed(5) + ', ' + p.coords.longitude.toFixed(5) +
+        ' (±' + Math.round(p.coords.accuracy) + ' m)';
+    }, function (e) {
+      dot.className = 'dot bad'; out.textContent = 'No position: ' + e.message;
+    });
+  };
+</script>
+</body>
+</html>
