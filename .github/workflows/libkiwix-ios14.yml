@@ -1,0 +1,55 @@
+name: libkiwix for iOS 14
+
+# Builds Kiwix's engine for Pocket Mirror (iPhone 11, iOS 14) and caches it. Slow (deps from source),
+# so it runs only when its build script changes or on demand; the app workflow restores the cache.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/PocketMirror/ci/build-libkiwix-ios14.sh"
+      - ".github/workflows/libkiwix-ios14.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Privacy check (public repo)
+        run: ci/privacy-check.sh
+
+      - name: Select Xcode 16.4
+        run: |
+          XCODE_PATH=/Applications/Xcode_16.4.app
+          test -d "$XCODE_PATH" || { echo "::error::$XCODE_PATH not found on runner"; exit 1; }
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
+
+      - name: Restore cached build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: apps/PocketMirror/build/kiwix/CoreKiwix.xcframework
+          key: corekiwix-ios14-${{ hashFiles('apps/PocketMirror/ci/build-libkiwix-ios14.sh') }}
+
+      - name: Build libkiwix (kiwix-build, iOS 14.0)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          apps/PocketMirror/ci/build-libkiwix-ios14.sh
+
+      - name: Show result
+        run: |
+          cat apps/PocketMirror/build/kiwix/CoreKiwix.xcframework/BUILD_INFO
+          ls -la apps/PocketMirror/build/kiwix/CoreKiwix.xcframework/*/
+          du -sh apps/PocketMirror/build/kiwix/CoreKiwix.xcframework
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiwix-build-logs
+          path: apps/PocketMirror/build/kiwix-work/BUILD_ios_arm64/LOGS
+          if-no-files-found: ignore
