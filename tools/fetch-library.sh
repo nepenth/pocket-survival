@@ -26,11 +26,24 @@ while IFS='|' read -r set zpath title; do
   if [ -f "$OUT/$file" ] && [ "$(shasum -a 256 "$OUT/$file" | awk '{print $1}')" = "$expected" ]; then
     echo "   already downloaded and verified"; ok=$((ok + 1)); continue
   fi
-  # -C - resumes a partial .part file; mirrors support byte ranges.
-  for attempt in 1 2 3; do
-    if curl -fL -A "pocket-survival" --retry 5 --retry-delay 10 -C - --progress-bar -o "$OUT/$file.part" "$MIRROR/$zpath"; then break; fi
-    echo "   download interrupted (attempt $attempt), resuming..."; sleep 10
-  done
+  # Kiwix mirrors each cap a single connection (well under 1 MB/s), so download from many mirrors at
+  # once using Kiwix's metalink (mirror list + piece hashes) with aria2c when it's installed
+  # (brew install aria2). Falls back to one curl connection otherwise.
+  if command -v aria2c >/dev/null; then
+    # aria2c names the file from the metalink; download into a staging folder, then move it.
+    mkdir -p "$OUT/.incoming"
+    aria2c --dir="$OUT/.incoming" --follow-metalink=mem --metalink-preferred-protocol=https \
+      --split=16 --max-connection-per-server=2 --min-split-size=8M --continue=true \
+      --check-integrity=true --auto-file-renaming=false --allow-overwrite=true \
+      --summary-interval=0 --download-result=hide --console-log-level=warn --user-agent="pocket-survival" \
+      "$MIRROR/$zpath.meta4" || echo "   aria2c reported a problem; checking the file anyway"
+    [ -f "$OUT/.incoming/$file" ] && mv "$OUT/.incoming/$file" "$OUT/$file.part"
+  else
+    for attempt in 1 2 3; do
+      if curl -fL -A "pocket-survival" --retry 5 --retry-delay 10 -C - --progress-bar -o "$OUT/$file.part" "$MIRROR/$zpath"; then break; fi
+      echo "   download interrupted (attempt $attempt), resuming..."; sleep 10
+    done
+  fi
   actual=$(shasum -a 256 "$OUT/$file.part" | awk '{print $1}')
   if [ "$actual" = "$expected" ]; then
     mv "$OUT/$file.part" "$OUT/$file"; ok=$((ok + 1)); echo "   verified"
