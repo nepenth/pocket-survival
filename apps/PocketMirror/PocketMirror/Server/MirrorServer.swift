@@ -3,7 +3,7 @@ import Network
 
 /// Small static-file HTTP/1.1 server on Network.framework (no dependencies).
 /// GET/HEAD only, single byte ranges (206/416), keep-alive, directory index.html or listing.
-/// Serves only files under `root`. Compiles on iOS 14+ and macOS (for the CI range test).
+/// Serves files from an ordered list of roots (first match wins) and nothing outside them. Compiles on iOS 14+ and macOS (for the CI range test).
 final class MirrorServer {
     enum State: Equatable {
         case stopped
@@ -17,18 +17,22 @@ final class MirrorServer {
     private let queue = DispatchQueue(label: "mirror.server.listener")
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: ClientConnection] = [:]
-    private var root: URL = URL(fileURLWithPath: "/")
+    private var roots: [URL] = []
 
     init(port: UInt16 = 8090) {
         self.port = port
     }
 
-    /// Starts (or restarts) serving `root`. With `lan` false the server only accepts connections
-    /// from this device (bound to 127.0.0.1).
     func start(root: URL, lan: Bool) {
+        start(roots: [root], lan: lan)
+    }
+
+    /// Starts (or restarts) serving `roots`; a path is looked up in each root in order. With `lan`
+    /// false the server only accepts connections from this device (bound to 127.0.0.1).
+    func start(roots: [URL], lan: Bool) {
         queue.async { [self] in
             self.stopLocked()
-            self.root = root
+            self.roots = roots
             do {
                 let params = NWParameters.tcp
                 params.allowLocalEndpointReuse = true
@@ -40,8 +44,9 @@ final class MirrorServer {
                     params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: nwPort)
                     listener = try NWListener(using: params)
                 }
-                listener.stateUpdateHandler = { [weak self] state in
-                    guard let self else { return }
+                listener.stateUpdateHandler = { [weak self, weak listener] state in
+                    // Ignore late updates from a listener replaced by a restart.
+                    guard let self, let listener, self.listener === listener else { return }
                     switch state {
                     case .ready: self.report(.running(port: self.port, lan: lan))
                     case .failed(let error): self.report(.failed(error.localizedDescription))
@@ -76,7 +81,7 @@ final class MirrorServer {
     }
 
     private func accept(_ connection: NWConnection) {
-        let client = ClientConnection(connection: connection, root: root)
+        let client = ClientConnection(connection: connection, roots: roots)
         let id = ObjectIdentifier(client)
         connections[id] = client
         client.onClose = { [weak self] in
@@ -89,7 +94,7 @@ final class MirrorServer {
 /// One TCP connection; handles requests one after another (keep-alive).
 private final class ClientConnection {
     private let connection: NWConnection
-    private let root: URL
+    private let roots: [URL]
     private let queue = DispatchQueue(label: "mirror.server.connection")
     private var buffer = Data()
     private var closed = false
@@ -99,9 +104,9 @@ private final class ClientConnection {
     private static let maxHeadSize = 32 * 1024
     private static let headTerminator = Data("\r\n\r\n".utf8)
 
-    init(connection: NWConnection, root: URL) {
+    init(connection: NWConnection, roots: [URL]) {
         self.connection = connection
-        self.root = root
+        self.roots = roots
     }
 
     func start() {
@@ -168,16 +173,25 @@ private final class ClientConnection {
             sendSimple(.badRequest, keepAlive: keepAlive)
             return
         }
-        guard let url = HTTPCore.resolve(path: path, root: root) else {
+        let candidates = roots.compactMap { HTTPCore.resolve(path: path, root: $0) }
+        guard !candidates.isEmpty else {
             sendSimple(.forbidden, keepAlive: keepAlive)
             return
         }
-
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+        let fm = FileManager.default
+        func isDir(_ u: URL) -> Bool? {
+            var d: ObjCBool = false
+            return fm.fileExists(atPath: u.path, isDirectory: &d) ? d.boolValue : nil
+        }
+        // First root that has the path; for folders, prefer one with an index.html.
+        let existing = candidates.filter { isDir($0) != nil }
+        guard let first = existing.first else {
             sendSimple(.notFound, keepAlive: keepAlive)
             return
         }
+        let url = existing.first { isDir($0) == true && fm.fileExists(atPath: $0.appendingPathComponent("index.html").path) }
+            ?? first
+        let isDirectory = ObjCBool(isDir(url) == true)
         if isDirectory.boolValue {
             if !path.hasSuffix("/") {
                 let location = request.target.contains("?")

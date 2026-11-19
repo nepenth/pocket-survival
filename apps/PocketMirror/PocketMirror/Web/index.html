@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Pocket Mirror</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <h1>Pocket Mirror</h1>
+  <p class="sub">Offline survival kit. Everything here works without internet.</p>
+
+  <div class="grid">
+    <a class="tile" id="maps" href="/maps/"><div class="icon">🗺️</div><div><b>Maps</b><span>Checking…</span></div></a>
+    <a class="tile" id="library" href="/library/"><div class="icon">📚</div><div><b>Library</b><span>Checking…</span></div></a>
+    <a class="tile" id="guide" href="/guide/"><div class="icon">🧭</div><div><b>Guide</b><span>Checking…</span></div></a>
+    <a class="tile" id="books" href="/books/"><div class="icon">📖</div><div><b>Books</b><span>Checking…</span></div></a>
+  </div>
+
+  <h2>Tools</h2>
+  <div class="grid">
+    <a class="tile" href="/check.html"><div class="icon">✅</div><div><b>Phone checks</b><span>Server and GPS</span></div></a>
+  </div>
+
+  <p class="footer" id="footer"></p>
+
+<script>
+  // Each section is available when its folder exists in the content copied onto the phone.
+  function probe(id, url, ready, missing) {
+    var tile = document.getElementById(id), label = tile.querySelector('span');
+    fetch(url, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+      if (r.ok) { label.textContent = ready; }
+      else { label.textContent = missing; tile.classList.add('off'); }
+    }).catch(function () { label.textContent = missing; tile.classList.add('off'); });
+  }
+  fetch('/maps/maps.json', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (m) {
+      var tile = document.getElementById('maps'), label = tile.querySelector('span');
+      if (m && m.layers && m.layers.length) {
+        label.textContent = m.layers.length + (m.layers.length === 1 ? ' map area' : ' map areas') + ' · GPS';
+      } else { label.textContent = 'No maps loaded yet'; tile.classList.add('off'); }
+    })
+    .catch(function () {});
+  probe('library', '/library/', 'Browse archives', 'Not loaded yet');
+  probe('guide', '/guide/', 'Survival guide', 'Not loaded yet');
+  probe('books', '/books/', 'Reference books', 'Not loaded yet');
+  document.getElementById('footer').textContent = 'Served by Pocket Mirror at ' + location.host;
+</script>
+</body>
+</html>

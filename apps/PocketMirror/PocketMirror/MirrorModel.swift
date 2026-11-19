@@ -1,12 +1,11 @@
 import Foundation
 import UIKit
 
-/// App state: which folder is served, the server's status and the LAN toggle.
+/// App state: which content folder is served (alongside the built-in pages), the server's status
+/// and the LAN toggle.
 @MainActor
 final class MirrorModel: ObservableObject {
     enum Source: String {
-        /// Small sample bundled with the app (works with no setup).
-        case demo
         /// The app's own Documents folder; fill it from a Mac with Finder (File Sharing).
         case documents
         /// A folder picked in the Files app, remembered with a security-scoped bookmark.
@@ -33,10 +32,8 @@ final class MirrorModel: ObservableObject {
     private static let bookmarkKey = "pickedFolderBookmark"
 
     init() {
-        source = Source(rawValue: UserDefaults.standard.string(forKey: Self.sourceKey) ?? "") ?? .demo
-        if source == .demo, Self.documentsHasContent {
-            source = .documents // content was copied in with Finder since last launch
-        }
+        // Older builds also had a "demo" source; anything unknown falls back to Documents.
+        source = Source(rawValue: UserDefaults.standard.string(forKey: Self.sourceKey) ?? "") ?? .documents
         server.onStateChange = { [weak self] state in
             DispatchQueue.main.async { self?.serverState = state }
         }
@@ -46,8 +43,9 @@ final class MirrorModel: ObservableObject {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
-    static var demoURL: URL {
-        Bundle.main.url(forResource: "DemoContent", withExtension: nil)!
+    /// Built-in pages (launcher, map viewer, phone checks), served after the content folder.
+    static var webURL: URL {
+        Bundle.main.url(forResource: "Web", withExtension: nil)!
     }
 
     static var documentsHasContent: Bool {
@@ -57,7 +55,6 @@ final class MirrorModel: ObservableObject {
 
     var sourceDescription: String {
         switch source {
-        case .demo: return "Built-in sample"
         case .documents: return "On My iPhone › Pocket Mirror"
         case .picked: return pickedFolderName ?? "Chosen folder"
         }
@@ -94,8 +91,6 @@ final class MirrorModel: ObservableObject {
     private func resolveRoot() -> URL? {
         releaseFolderAccess()
         switch source {
-        case .demo:
-            return Self.demoURL
         case .documents:
             return Self.documentsURL
         case .picked:
@@ -135,7 +130,7 @@ final class MirrorModel: ObservableObject {
         }
         if source != .picked { problem = nil }
         lanAddress = lanEnabled ? Self.wifiAddress().map { "http://\($0):\(Self.port)/" } : nil
-        server.start(root: root, lan: lanEnabled)
+        server.start(roots: [root, Self.webURL], lan: lanEnabled)
     }
 
     func restartServer() {
@@ -158,7 +153,6 @@ final class MirrorModel: ObservableObject {
 
     func didBecomeActive() {
         endBackgroundTask()
-        if source == .demo, Self.documentsHasContent { use(.documents); return }
         // The listener may have been torn down while suspended; restarting is cheap.
         startServer()
     }

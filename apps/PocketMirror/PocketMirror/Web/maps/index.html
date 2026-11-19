@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Maps</title>
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="maps.css">
+</head>
+<body class="map-page">
+  <div id="map"></div>
+
+  <a class="map-btn home" href="/" aria-label="Home">⌂</a>
+  <button class="map-btn locate" id="locate" aria-label="Show my position">◎</button>
+
+  <div class="panel" id="panel">
+    <div id="status">Tap ◎ to show your position. GPS works without internet.</div>
+    <div id="coords" class="coords"></div>
+  </div>
+
+  <div class="notice" id="notice" hidden>
+    <h2>No maps on this phone yet</h2>
+    <p>Copy the <b>maps</b> folder into Pocket Mirror: connect the phone to a Mac, open it in Finder,
+      choose <b>Files › Pocket Mirror</b> and drag the folder in. Then reopen this page.</p>
+    <p><a href="/">← Home</a></p>
+  </div>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/vendor/protomaps-leaflet/protomaps-leaflet.js"></script>
+<script src="maps.js"></script>
+</body>
+</html>

@@ -24,7 +24,7 @@ struct ContentView: View {
                 }
 
                 Section(header: Text("Content"),
-                        footer: Text("To load your own content, connect the phone to a Mac, open it in Finder, choose Files › Pocket Mirror and copy the folder contents in. Or pick a folder in the Files app.")) {
+                        footer: Text("Maps, library and books are copied onto the phone, never downloaded by the app on its own. Connect the phone to a Mac, open it in Finder, choose Files › Pocket Mirror and drag the folders in (for example maps). Or pick a folder in the Files app.")) {
                     HStack {
                         Text("Serving")
                         Spacer()
@@ -35,7 +35,6 @@ struct ContentView: View {
                     }
                     sourceButton("Use On My iPhone › Pocket Mirror", .documents)
                     Button("Choose a Folder…") { showingPicker = true }
-                    sourceButton("Use the Built-in Sample", .demo)
                     if let problem = model.problem {
                         Text(problem)
                             .foregroundColor(.red)

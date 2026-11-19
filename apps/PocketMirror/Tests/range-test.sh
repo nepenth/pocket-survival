@@ -23,7 +23,15 @@ put 1000 "START-MARKER-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP"
 put "$MID" "MIDDLE-MARKER-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"
 put $((SIZE - 64)) "END-MARKER-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"
 
-"$WORK/rangetest" "$ROOT" "$PORT" & SERVER_PID=$!
+# Second root, searched after the first (in the app: built-in pages after the content folder).
+WEB="$WORK/web"; mkdir -p "$WEB/maps" "$WEB/sub dir"
+echo 'built-in maps page' > "$WEB/maps/index.html"
+echo 'built-in only' > "$WEB/app.js"
+echo 'should be hidden' > "$WEB/index.html"
+echo 'built-in index for sub dir' > "$WEB/sub dir/index.html"
+mkdir -p "$ROOT/maps"; echo 'map data' > "$ROOT/maps/area.pmtiles"
+
+"$WORK/rangetest" "$ROOT:$WEB" "$PORT" & SERVER_PID=$!
 for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep 0.1; done
 BASE="http://127.0.0.1:$PORT"
 
@@ -59,11 +67,16 @@ check "path traversal refused"           "403" "$(status --path-as-is "$BASE/../
 check "encoded traversal refused"        "403" "$(status --path-as-is "$BASE/%2e%2e/outside.txt")"
 check "POST -> 405"                      "405" "$(status -X POST "$BASE/index.html")"
 check "keep-alive: 2 requests, 1 connection" "2" "$(curl -s -v "$BASE/index.html" "$BASE/sub%20dir/note.txt" 2>&1 | grep -c 'Re-using existing connection\|Reusing existing' | awk '{print $1+1}')"
+check "2 roots: file only in second root" "built-in only" "$(curl -s "$BASE/app.js")"
+check "2 roots: first root wins"          "<h1>hello</h1>" "$(curl -s "$BASE/index.html")"
+check "2 roots: folder index from 2nd"    "built-in maps page" "$(curl -s "$BASE/maps/")"
+check "2 roots: data file in 1st's folder" "map data" "$(curl -s "$BASE/maps/area.pmtiles")"
+check "2 roots: folder with index wins"   "built-in index for sub dir" "$(curl -s "$BASE/sub%20dir/")"
 check "LAN off: bound to loopback only"  "127.0.0.1:$PORT" "$(lsof -nP -a -p $SERVER_PID -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $9; exit}')"
 
 # LAN on: same server bound to all interfaces.
 kill $SERVER_PID; wait $SERVER_PID 2>/dev/null || true
-"$WORK/rangetest" "$ROOT" "$PORT" lan & SERVER_PID=$!
+"$WORK/rangetest" "$ROOT:$WEB" "$PORT" lan & SERVER_PID=$!
 for _ in $(seq 50); do curl -s -o /dev/null "$BASE/" && break; sleep 0.1; done
 check "LAN on: bound to all interfaces"  "*:$PORT" "$(lsof -nP -a -p $SERVER_PID -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $9; exit}')"
 

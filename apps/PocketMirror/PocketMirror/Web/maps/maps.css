@@ -1,0 +1,42 @@
+body.map-page { padding: 0; overflow: hidden; height: 100vh; }
+#map { position: absolute; inset: 0; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg); }
+
+.map-btn {
+  position: absolute; z-index: 1000; right: 12px; width: 52px; height: 52px; margin: 0;
+  border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text);
+  font-size: 26px; line-height: 50px; text-align: center; text-decoration: none; padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.map-btn.home { top: max(12px, env(safe-area-inset-top)); }
+.map-btn.locate { top: calc(max(12px, env(safe-area-inset-top)) + 64px); }
+.map-btn.locate.on { color: #fff; background: var(--accent); }
+.map-btn.locate.follow { color: #fff; background: #2f7fe0; }
+
+.panel {
+  position: absolute; z-index: 1000; left: 12px; right: 76px;
+  bottom: max(28px, calc(env(safe-area-inset-bottom) + 20px));
+  background: var(--card); color: var(--text); border-radius: 14px; padding: 10px 14px;
+  font-size: 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); border: 1px solid var(--line);
+}
+.panel .coords { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 15px; }
+.panel .coords:empty { display: none; }
+
+.notice {
+  position: absolute; z-index: 1100; inset: 0; top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg); padding: max(24px, env(safe-area-inset-top)) 20px 20px;
+}
+
+/* Leaflet controls sized for fingers and readable in both themes. */
+.leaflet-control-zoom a { width: 44px !important; height: 44px !important; line-height: 44px !important; font-size: 22px !important; }
+.leaflet-control-attribution { font-size: 12px; }
+.leaflet-control-scale-line { font-size: 13px; }
+@media (prefers-color-scheme: dark) {
+  .leaflet-bar a, .leaflet-control-attribution, .leaflet-control-scale-line {
+    background: #18232a !important; color: #e9eef1 !important; border-color: #33434d !important;
+  }
+  .leaflet-control-attribution a { color: #f5923a; }
+}
+.you-dot {
+  width: 18px; height: 18px; border-radius: 50%; background: #2f7fe0;
+  border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}

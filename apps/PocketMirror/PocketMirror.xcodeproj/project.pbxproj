@@ -14,7 +14,7 @@
 		B10C00000000000000000009 /* HTTPCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10C0000000000000000000A /* HTTPCore.swift */; };
 		B10C0000000000000000000B /* MirrorServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10C0000000000000000000C /* MirrorServer.swift */; };
 		B10C0000000000000000000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10C0000000000000000000E /* Assets.xcassets */; };
-		B10C0000000000000000000F /* DemoContent in Resources */ = {isa = PBXBuildFile; fileRef = B10C00000000000000000010 /* DemoContent */; };
+		B10C0000000000000000000F /* Web in Resources */ = {isa = PBXBuildFile; fileRef = B10C00000000000000000010 /* Web */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,7 +25,7 @@
 		B10C0000000000000000000A /* HTTPCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPCore.swift; sourceTree = "<group>"; };
 		B10C0000000000000000000C /* MirrorServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MirrorServer.swift; sourceTree = "<group>"; };
 		B10C0000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		B10C00000000000000000010 /* DemoContent */ = {isa = PBXFileReference; lastKnownFileType = folder; path = DemoContent; sourceTree = "<group>"; };
+		B10C00000000000000000010 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
 		B10C00000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B10C00000000000000000012 /* PocketMirror.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketMirror.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -58,7 +58,7 @@
 				B10C00000000000000000008 /* MirrorWebView.swift */,
 				B10C00000000000000000013 /* Server */,
 				B10C0000000000000000000E /* Assets.xcassets */,
-				B10C00000000000000000010 /* DemoContent */,
+				B10C00000000000000000010 /* Web */,
 				B10C00000000000000000011 /* Info.plist */,
 			);
 			path = PocketMirror;
@@ -135,7 +135,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B10C0000000000000000000D /* Assets.xcassets in Resources */,
-				B10C0000000000000000000F /* DemoContent in Resources */,
+				B10C0000000000000000000F /* Web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -214,7 +214,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = net.pocketsurvival.mirror;
 				PRODUCT_NAME = PocketMirror;
 				SDKROOT = iphoneos;
@@ -243,7 +243,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = net.pocketsurvival.mirror;
 				PRODUCT_NAME = PocketMirror;
 				SDKROOT = iphoneos;

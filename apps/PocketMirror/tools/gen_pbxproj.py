@@ -9,7 +9,7 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "PocketMirror.xcodeproj", "project.pbxproj")
 
-MARKETING_VERSION = "0.1.0"
+MARKETING_VERSION = "0.2.0"
 BUNDLE_ID = "net.pocketsurvival.mirror"
 
 # (file name, subgroup under PocketMirror/ or None)
@@ -89,13 +89,13 @@ def main():
                   for f, _ in SWIFT_FILES]
     buildfiles += [
         f"\t\t{oid('bf_assets')} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {oid('fr_assets')} /* Assets.xcassets */; }};",
-        f"\t\t{oid('bf_demo')} /* DemoContent in Resources */ = {{isa = PBXBuildFile; fileRef = {oid('fr_demo')} /* DemoContent */; }};",
+        f"\t\t{oid('bf_demo')} /* Web in Resources */ = {{isa = PBXBuildFile; fileRef = {oid('fr_demo')} /* Web */; }};",
     ]
     filerefs = [f"\t\t{oid('fr_' + f)} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {f}; sourceTree = \"<group>\"; }};"
                 for f, _ in SWIFT_FILES]
     filerefs += [
         f"\t\t{oid('fr_assets')} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = \"<group>\"; }};",
-        f"\t\t{oid('fr_demo')} /* DemoContent */ = {{isa = PBXFileReference; lastKnownFileType = folder; path = DemoContent; sourceTree = \"<group>\"; }};",
+        f"\t\t{oid('fr_demo')} /* Web */ = {{isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = \"<group>\"; }};",
         f"\t\t{oid('fr_plist')} /* Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = \"<group>\"; }};",
         f"\t\t{oid('fr_app')} /* PocketMirror.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketMirror.app; sourceTree = BUILT_PRODUCTS_DIR; }};",
     ]
@@ -156,7 +156,7 @@ def main():
 			children = (
 {top_children}
 				{oid('fr_assets')} /* Assets.xcassets */,
-				{oid('fr_demo')} /* DemoContent */,
+				{oid('fr_demo')} /* Web */,
 				{oid('fr_plist')} /* Info.plist */,
 			);
 			path = PocketMirror;
@@ -224,7 +224,7 @@ def main():
 			buildActionMask = 2147483647;
 			files = (
 				{oid('bf_assets')} /* Assets.xcassets in Resources */,
-				{oid('bf_demo')} /* DemoContent in Resources */,
+				{oid('bf_demo')} /* Web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		}};

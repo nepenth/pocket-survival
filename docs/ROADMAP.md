@@ -36,7 +36,8 @@
      read ZIMs from a server on iOS 14; see `docs/CONTENT_PLAN.md`.
    - Content catalog, the Mac fetch script, and in-app background downloads.
    - Search works on the phone, including on the 3.6 GB iFixit archive.
-3. **Maps.**
+3. **Maps** (0.2.0: built; waiting on the phone test). New England street level (1.2 GB), wider
+   Northeast (416 MB), North America backdrop (164 MB), cut by `tools/cut-maps.sh`.
    - Tile pipeline for the chosen region, served offline, with the GPS dot and attribution.
    - Raster or vector tiles, decided after testing on iOS 14.
 4. **Guide and books, then the launcher.**
