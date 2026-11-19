@@ -45,7 +45,10 @@ with open(sys.argv[2], "w") as out:
             ele = int(round(f["properties"]["ele_ft"]))
             if ele <= 0:
                 continue
-            f["properties"] = {"ele": ele, "idx": 1 if ele % 200 == 0 else 0}
+            idx = 1 if ele % 200 == 0 else 0
+            f["properties"] = {"ele": ele, "idx": idx}
+            if idx:
+                f["properties"]["label"] = f"{ele:,}"   # map labels must be text
             out.write(json.dumps(f, separators=(",", ":")) + "\n")
             n += 1
 print(f"{n} contour lines")
@@ -71,6 +74,6 @@ pmtiles convert "$WORK/hillshade.mbtiles" "$OUT/hillshade.pmtiles"
 cat > "$OUT/topo.json" <<EOF
 {"source": "USGS 3DEP 1 arc-second elevation (public domain)", "bbox": [$W, $S, $E, $N],
  "contours": {"file": "contours.pmtiles", "interval_ft": 40, "index_ft": 200, "minzoom": 9, "maxzoom": 14},
- "hillshade": {"file": "hillshade.pmtiles"}}
+ "hillshade": {"file": "hillshade.pmtiles", "maxzoom": 13}}
 EOF
 ls -lh "$OUT"

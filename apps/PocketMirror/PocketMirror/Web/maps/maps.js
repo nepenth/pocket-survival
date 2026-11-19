@@ -206,7 +206,7 @@
         var line = dark ? '#c9a27a' : '#9a6a3a';
         function build() {
           var hill = pmtiles.leafletRasterLayer(new pmtiles.PMTiles('/maps/' + topo.hillshade.file), {
-            maxNativeZoom: 12, maxZoom: 18, bounds: box, zIndex: 10, opacity: dark ? 0.6 : 0.5, className: 'hillshade',
+            maxNativeZoom: topo.hillshade.maxzoom || 13, maxZoom: 18, bounds: box, zIndex: 10, opacity: dark ? 0.45 : 0.35, className: 'hillshade',
             attribution: 'Relief: USGS 3DEP'
           });
           var contours = protomapsL.leafletLayer({
@@ -214,17 +214,19 @@
             attribution: '',
             paintRules: [{
               dataLayer: 'contours',
+              // 40 ft lines only from zoom 13; 200 ft index lines always.
+              filter: function (z, f) { return f.props.idx === 1 || z >= 13; },
               symbolizer: new protomapsL.LineSymbolizer({
                 color: line,
-                width: function (z, f) { return f.props.idx ? (z >= 13 ? 1.6 : 1.1) : 0.6; },
-                opacity: function (z, f) { return f.props.idx ? 0.9 : 0.55; }
+                width: function (z, f) { return f.props.idx ? (z >= 14 ? 1.3 : 0.9) : 0.45; },
+                opacity: function (z, f) { return f.props.idx ? 0.8 : (z >= 14 ? 0.45 : 0.3); }
               })
             }],
             labelRules: [{
               dataLayer: 'contours', minzoom: 12,
               filter: function (z, f) { return f.props.idx === 1; },
               symbolizer: new protomapsL.LineLabelSymbolizer({
-                labelProps: ['ele'], fill: line, stroke: dark ? '#18232a' : '#ffffff', width: 2,
+                labelProps: ['label'], fill: line, repeatDistance: 400, stroke: dark ? '#18232a' : '#ffffff', width: 2,
                 font: '600 11px sans-serif'
               })
             }]
