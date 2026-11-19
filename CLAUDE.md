@@ -52,5 +52,10 @@ no simulator testing: the simulator is not an iPhone 11 on iOS 14, so results th
   Web pages get GPS through a native bridge (`navigator.geolocation` replaced in `MirrorWebView.swift`),
   because plain-http pages aren't a secure context. Bundle id `net.pocketsurvival.mirror`; build number =
   CI run number.
+- `content/` (never committed): a symlink to `/Volumes/DevScratch/pocket-survival-content` on the
+  owner's external SSD, which holds the maps and later the library and books. Keep it off the internal
+  disk; if the SSD isn't mounted, the scripts fail rather than filling the laptop.
+- Public repo: `ci/privacy-check.sh` runs in CI and fails on home paths, personal emails, private IPs,
+  keys and device IDs. Keep owner details out of committed files: no names, location, KB URLs.
 - `docs/`: change reports and the roadmap. The KB packets that define the work are on the owner's KB
   site; ask for links rather than copying their content here.

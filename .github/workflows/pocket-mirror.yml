@@ -19,6 +19,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Privacy check (public repo)
+        working-directory: .
+        run: ci/privacy-check.sh
+
       - name: Select Xcode 16.4
         run: |
           # Xcode 26+ only supports iOS 15+ deployment targets; the target phone runs iOS 14.7.1.
