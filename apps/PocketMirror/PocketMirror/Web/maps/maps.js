@@ -194,6 +194,141 @@
       return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
     }
 
-    setStatus('Tap ◎ to show your position. Long-press the map for a point’s coordinates.');
+    // --- Topo overlay (USGS 3DEP contours + hillshade; files from tools/build-topo.sh) ----------
+    var TOPO_KEY = 'pocketMirror.topo', topoLayers = [], topoBtn = document.getElementById('topoBtn');
+    fetch('/maps/topo.json', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (topo) {
+        if (!topo) return;
+        topoBtn.hidden = false;
+        var b = topo.bbox, box = L.latLngBounds([[b[1], b[0]], [b[3], b[2]]]);
+        var dark = darkQuery && darkQuery.matches;
+        var line = dark ? '#c9a27a' : '#9a6a3a';
+        function build() {
+          var hill = pmtiles.leafletRasterLayer(new pmtiles.PMTiles('/maps/' + topo.hillshade.file), {
+            maxNativeZoom: 12, maxZoom: 18, bounds: box, zIndex: 10, opacity: dark ? 0.6 : 0.5, className: 'hillshade',
+            attribution: 'Relief: USGS 3DEP'
+          });
+          var contours = protomapsL.leafletLayer({
+            url: '/maps/' + topo.contours.file, maxDataZoom: topo.contours.maxzoom, bounds: box, zIndex: 11,
+            attribution: '',
+            paintRules: [{
+              dataLayer: 'contours',
+              symbolizer: new protomapsL.LineSymbolizer({
+                color: line,
+                width: function (z, f) { return f.props.idx ? (z >= 13 ? 1.6 : 1.1) : 0.6; },
+                opacity: function (z, f) { return f.props.idx ? 0.9 : 0.55; }
+              })
+            }],
+            labelRules: [{
+              dataLayer: 'contours', minzoom: 12,
+              filter: function (z, f) { return f.props.idx === 1; },
+              symbolizer: new protomapsL.LineLabelSymbolizer({
+                labelProps: ['ele'], fill: line, stroke: dark ? '#18232a' : '#ffffff', width: 2,
+                font: '600 11px sans-serif'
+              })
+            }]
+          });
+          return [hill, contours];
+        }
+        function setTopo(on) {
+          topoLayers.forEach(function (l) { map.removeLayer(l); });
+          topoLayers = on ? build() : [];
+          topoLayers.forEach(function (l) { l.addTo(map); });
+          topoBtn.classList.toggle('on', on);
+          try { localStorage.setItem(TOPO_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ }
+          if (on) setStatus('Topo on: contour lines every ' + topo.contours.interval_ft + ' ft (bold every ' +
+            topo.contours.index_ft + ' ft, labelled in feet) and shaded relief.');
+        }
+        var saved = null;
+        try { saved = localStorage.getItem(TOPO_KEY); } catch (e) { /* ignore */ }
+        if (saved === '1') setTopo(true);
+        topoBtn.addEventListener('click', function () { setTopo(topoLayers.length === 0); });
+      })
+      .catch(function () {});
+
+    // --- Place-name search (offline index: /maps/places.json built by tools/build-places.sh) ---
+    var places = null, folded = null, kinds = null, searchMarker = null;
+    var panel = document.getElementById('searchPanel'), input = document.getElementById('searchInput');
+    var results = document.getElementById('searchResults');
+
+    function fold(s) {
+      return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[’']/g, '');
+    }
+    function loadPlaces() {
+      if (places) return Promise.resolve();
+      results.innerHTML = '<div class="empty">Loading place names…</div>';
+      return fetch('/maps/places.json').then(function (r) {
+        if (!r.ok) throw new Error('missing');
+        return r.json();
+      }).then(function (d) {
+        places = d.places; kinds = d.kinds;
+        folded = places.map(function (p) { return fold(p[0]); });
+        results.innerHTML = '';
+      }).catch(function () {
+        results.innerHTML = '<div class="empty">No place index on this phone yet (maps/places.json).</div>';
+      });
+    }
+    function reference() { return lastFix ? lastFix.latlng : map.getCenter(); }
+    function describe(p, ref) {
+      var ll = L.latLng(p[2], p[3]), meters = ref.distanceTo(ll), miles = meters / 1609.344;
+      var bits = [kinds[p[1]][0], p[4]];
+      if (p.length > 5) bits.push(Math.round(p[5] * 3.28084).toLocaleString() + ' ft');
+      bits.push((miles < 10 ? miles.toFixed(1) : Math.round(miles)) + ' mi ' + compass(bearingDeg(ref, ll)) +
+        (lastFix ? ' of you' : ' of map centre'));
+      return bits.join(' · ');
+    }
+    function search(q) {
+      var fq = fold(q.trim());
+      if (fq.length < 2 || !places) { results.innerHTML = ''; return; }
+      var ref = reference(), hits = [];
+      for (var i = 0; i < folded.length; i++) {
+        var n = folded[i], score;
+        if (n === fq) score = 0;
+        else if (n.indexOf(fq) === 0) score = 1;
+        else if (n.indexOf(' ' + fq) >= 0 || n.indexOf('-' + fq) >= 0) score = 2;
+        else if (fq.length >= 3 && n.indexOf(fq) >= 0) score = 3;
+        else continue;
+        hits.push({ i: i, score: score });
+      }
+      hits.forEach(function (h) {
+        var p = places[h.i];
+        h.rank = h.score * 100 - kinds[p[1]][1] * 6 + Math.min(ref.distanceTo(L.latLng(p[2], p[3])) / 25000, 60);
+      });
+      hits.sort(function (a, b) { return a.rank - b.rank; });
+      if (!hits.length) { results.innerHTML = '<div class="empty">No matches</div>'; return; }
+      results.innerHTML = hits.slice(0, 40).map(function (h) {
+        var p = places[h.i];
+        return '<div class="hit" data-i="' + h.i + '"><b>' + escapeHtml(p[0]) + '</b><span>' + escapeHtml(describe(p, ref)) + '</span></div>';
+      }).join('');
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+    }
+    var ZOOM = { City: 12, Town: 13, Village: 14, Hamlet: 15, River: 12, Lake: 13, Reservoir: 13, Bay: 12,
+                 'National park': 11, 'Protected area': 12, 'Nature reserve': 13, Island: 13, Peak: 14, Airport: 13 };
+    results.addEventListener('click', function (ev) {
+      var el = ev.target.closest ? ev.target.closest('.hit') : null;
+      if (!el) return;
+      var p = places[+el.getAttribute('data-i')], ll = L.latLng(p[2], p[3]), label = kinds[p[1]][0];
+      closeSearch();
+      if (follow) { follow = false; setButton(); }
+      map.setView(ll, ZOOM[label] || 16);
+      if (searchMarker) map.removeLayer(searchMarker);
+      searchMarker = L.circleMarker(ll, { radius: 9, color: '#fff', weight: 3, fillColor: '#e8822e', fillOpacity: 1 }).addTo(map);
+      searchMarker.bindPopup('<b>' + escapeHtml(p[0]) + '</b><br>' + escapeHtml(describe(p, reference())) +
+        '<br>' + formatLatLng(p[2], p[3])).openPopup();
+    });
+    function openSearch() { panel.hidden = false; input.focus(); loadPlaces().then(function () { search(input.value); }); }
+    function closeSearch() { panel.hidden = true; input.blur(); }
+    document.getElementById('searchBtn').addEventListener('click', openSearch);
+    document.getElementById('searchClose').addEventListener('click', closeSearch);
+    var pending = null;
+    input.addEventListener('input', function () {
+      clearTimeout(pending);
+      pending = setTimeout(function () { search(input.value); }, 120);
+    });
+
+    setStatus('Tap ◎ to show your position, ⌕ to search places. Long-press the map for coordinates.');
   }
 })();

@@ -14,6 +14,16 @@
 
   <a class="map-btn home" href="/" aria-label="Home">⌂</a>
   <button class="map-btn locate" id="locate" aria-label="Show my position">◎</button>
+  <button class="map-btn search" id="searchBtn" aria-label="Search places">⌕</button>
+  <button class="map-btn topo" id="topoBtn" aria-label="Topographic layer" hidden>⛰</button>
+
+  <div class="search-panel" id="searchPanel" hidden>
+    <div class="search-row">
+      <input id="searchInput" type="search" placeholder="Towns, peaks, lakes, hospitals…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <button id="searchClose" aria-label="Close search">Cancel</button>
+    </div>
+    <div id="searchResults" class="search-results"></div>
+  </div>
 
   <div class="panel" id="panel">
     <div id="status">Tap ◎ to show your position. GPS works without internet.</div>
@@ -29,6 +39,7 @@
 
 <script src="/vendor/leaflet/leaflet.js"></script>
 <script src="/vendor/protomaps-leaflet/protomaps-leaflet.js"></script>
+<script src="/vendor/pmtiles/pmtiles.js"></script>
 <script src="maps.js"></script>
 </body>
 </html>

@@ -12,6 +12,32 @@ body.map-page .leaflet-popup-content, body.map-page .coords { -webkit-user-selec
 }
 .map-btn.home { top: max(12px, env(safe-area-inset-top)); }
 .map-btn.locate { top: calc(max(12px, env(safe-area-inset-top)) + 64px); }
+.map-btn.search { top: calc(max(12px, env(safe-area-inset-top)) + 128px); font-size: 30px; }
+.map-btn.topo { top: calc(max(12px, env(safe-area-inset-top)) + 192px); font-size: 24px; }
+.map-btn.topo[hidden] { display: none; }
+.map-btn.topo.on { color: #fff; background: #8a5a2b; }
+/* Shaded relief darkens the map underneath instead of covering it. */
+.hillshade { mix-blend-mode: multiply; }
+@media (prefers-color-scheme: dark) { .hillshade { mix-blend-mode: soft-light; } }
+
+.search-panel {
+  position: absolute; z-index: 1200; left: 0; right: 0; top: 0; max-height: 80vh;
+  display: flex; flex-direction: column; background: var(--bg);
+  padding: max(10px, env(safe-area-inset-top)) 12px 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.search-panel[hidden] { display: none; }
+.search-row { display: flex; gap: 8px; align-items: center; }
+.search-row input {
+  flex: 1; font: inherit; font-size: 17px; padding: 10px 12px; border-radius: 10px; color: var(--text);
+  border: 1px solid var(--line); background: var(--card); -webkit-user-select: text; user-select: text;
+}
+.search-row button { margin: 0; background: transparent; color: var(--accent); padding: 10px 4px; }
+.search-results { overflow-y: auto; -webkit-overflow-scrolling: touch; margin-top: 6px; }
+.search-results .hit { padding: 10px 4px; border-bottom: 1px solid var(--line); }
+.search-results .hit:active { background: var(--card-press); }
+.search-results .hit b { display: block; font-size: 17px; }
+.search-results .hit span { color: var(--muted); font-size: 14px; }
+.search-results .empty { color: var(--muted); padding: 14px 4px; }
 .map-btn.locate.on { color: #fff; background: var(--accent); }
 .map-btn.locate.follow { color: #fff; background: #2f7fe0; }
 
