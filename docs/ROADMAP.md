@@ -32,7 +32,9 @@
    - CI workflow with the iOS 14 checks.
    - Done when a test bundle opens on the phone in airplane mode.
 2. **Library.**
-   - kiwix-js against the local ZIMs.
+   - libkiwix built for iOS 14 in CI and run inside the app as an in-process kiwix-serve. kiwix-js can't
+     read ZIMs from a server on iOS 14; see `docs/CONTENT_PLAN.md`.
+   - Content catalog, the Mac fetch script, and in-app background downloads.
    - Search works on the phone, including on the 3.6 GB iFixit archive.
 3. **Maps.**
    - Tile pipeline for the chosen region, served offline, with the GPS dot and attribution.
