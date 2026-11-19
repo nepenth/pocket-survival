@@ -63,6 +63,11 @@ struct ContentView: View {
                         .disabled(!model.isRunning)
                 }
 
+                Section(header: Text("Receive Files"),
+                        footer: Text("Turn on, connect the phone to the Mac with the cable, and run tools/push-content.sh maps on the Mac. Keep this screen open until it finishes; the screen stays awake meanwhile. Files go into the content folder only.")) {
+                    Toggle("Accept Uploads", isOn: $model.uploadsEnabled)
+                }
+
                 Section(header: Text("Share on Wi-Fi"),
                         footer: Text("Off by default. When on, other devices on the same Wi-Fi network can browse this content at the address below, while this app is open.")) {
                     Toggle("Share on Local Network", isOn: $model.lanEnabled)

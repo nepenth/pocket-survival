@@ -23,6 +23,14 @@ final class MirrorModel: ObservableObject {
         didSet { if lanEnabled != oldValue { restartServer() } }
     }
     @Published var problem: String?
+    /// Lets a computer send files into the content folder (see tools/push-content.sh). Off at every
+    /// launch; while on, the screen stays awake so iOS doesn't suspend the app mid-transfer.
+    @Published var uploadsEnabled = false {
+        didSet {
+            server.uploadsEnabled = uploadsEnabled
+            UIApplication.shared.isIdleTimerDisabled = uploadsEnabled
+        }
+    }
 
     private let server = MirrorServer(port: MirrorModel.port)
     private var accessedFolder: URL?
@@ -43,7 +51,7 @@ final class MirrorModel: ObservableObject {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
-    /// Built-in pages (launcher, map viewer, phone checks), served after the content folder.
+    /// Built-in pages (launcher, map viewer, phone checks), looked up before the content folder.
     static var webURL: URL {
         Bundle.main.url(forResource: "Web", withExtension: nil)!
     }
@@ -130,7 +138,9 @@ final class MirrorModel: ObservableObject {
         }
         if source != .picked { problem = nil }
         lanAddress = lanEnabled ? Self.wifiAddress().map { "http://\($0):\(Self.port)/" } : nil
-        server.start(roots: [root, Self.webURL], lan: lanEnabled)
+        // Built-in pages first, so content (or an upload) can never replace them; uploads land
+        // only in the content folder.
+        server.start(roots: [Self.webURL, root], uploadRoot: root, lan: lanEnabled)
     }
 
     func restartServer() {

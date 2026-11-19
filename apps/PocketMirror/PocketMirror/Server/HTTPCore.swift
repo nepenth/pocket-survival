@@ -69,12 +69,14 @@ enum ByteRange: Equatable {
 }
 
 enum HTTPStatus: Int {
-    case ok = 200, partialContent = 206, movedPermanently = 301, notModified = 304, badRequest = 400, forbidden = 403,
-         notFound = 404, methodNotAllowed = 405, rangeNotSatisfiable = 416, serverError = 500
+    case ok = 200, created = 201, partialContent = 206, movedPermanently = 301, notModified = 304, badRequest = 400, forbidden = 403,
+         notFound = 404, methodNotAllowed = 405, lengthRequired = 411, rangeNotSatisfiable = 416,
+         serverError = 500, insufficientStorage = 507
 
     var reason: String {
         switch self {
         case .ok: return "OK"
+        case .created: return "Created"
         case .partialContent: return "Partial Content"
         case .movedPermanently: return "Moved Permanently"
         case .notModified: return "Not Modified"
@@ -82,8 +84,10 @@ enum HTTPStatus: Int {
         case .forbidden: return "Forbidden"
         case .notFound: return "Not Found"
         case .methodNotAllowed: return "Method Not Allowed"
+        case .lengthRequired: return "Length Required"
         case .rangeNotSatisfiable: return "Range Not Satisfiable"
         case .serverError: return "Internal Server Error"
+        case .insufficientStorage: return "Insufficient Storage"
         }
     }
 }
@@ -100,11 +104,11 @@ enum HTTPCore {
     static func resolve(path: String, root: URL) -> URL? {
         let components = path.split(separator: "/").map(String.init)
         if components.contains(where: { $0 == ".." || $0 == "." || $0.contains("\0") }) { return nil }
+        // With "." and ".." refused, appending components can't leave the root. (No standardizing:
+        // `standardizedFileURL` drops "/private" only for paths that exist, which made new files
+        // under /private/var or /private/tmp look like they were outside the root.)
         var url = root
         for component in components { url.appendPathComponent(component) }
-        let rootPath = root.standardizedFileURL.path
-        let resolved = url.standardizedFileURL.path
-        guard resolved == rootPath || resolved.hasPrefix(rootPath + "/") else { return nil }
         return url
     }
 

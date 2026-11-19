@@ -2,7 +2,8 @@ import Foundation
 import Network
 
 /// Small static-file HTTP/1.1 server on Network.framework (no dependencies).
-/// GET/HEAD only, single byte ranges (206/416), keep-alive, directory index.html or listing.
+/// GET/HEAD with single byte ranges (206/416), keep-alive, directory index.html or listing, and
+/// PUT uploads into a separate upload root, only while uploads are switched on.
 /// Serves files from an ordered list of roots (first match wins) and nothing outside them. Compiles on iOS 14+ and macOS (for the CI range test).
 final class MirrorServer {
     enum State: Equatable {
@@ -18,6 +19,14 @@ final class MirrorServer {
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: ClientConnection] = [:]
     private var roots: [URL] = []
+    private var uploadRoot: URL?
+    private let uploads = UploadGate()
+
+    /// While on, PUT /some/path writes a file into the upload root (the content folder).
+    var uploadsEnabled: Bool {
+        get { uploads.isOn }
+        set { uploads.isOn = newValue }
+    }
 
     init(port: UInt16 = 8090) {
         self.port = port
@@ -29,10 +38,12 @@ final class MirrorServer {
 
     /// Starts (or restarts) serving `roots`; a path is looked up in each root in order. With `lan`
     /// false the server only accepts connections from this device (bound to 127.0.0.1).
-    func start(roots: [URL], lan: Bool) {
+    /// `uploadRoot` (normally one of `roots`) receives PUT uploads; nil refuses them.
+    func start(roots: [URL], uploadRoot: URL? = nil, lan: Bool) {
         queue.async { [self] in
             self.stopLocked()
             self.roots = roots
+            self.uploadRoot = uploadRoot
             do {
                 let params = NWParameters.tcp
                 params.allowLocalEndpointReuse = true
@@ -81,7 +92,7 @@ final class MirrorServer {
     }
 
     private func accept(_ connection: NWConnection) {
-        let client = ClientConnection(connection: connection, roots: roots)
+        let client = ClientConnection(connection: connection, roots: roots, uploadRoot: uploadRoot, uploads: uploads)
         let id = ObjectIdentifier(client)
         connections[id] = client
         client.onClose = { [weak self] in
@@ -91,10 +102,22 @@ final class MirrorServer {
     }
 }
 
+/// Thread-safe on/off switch shared with every connection.
+final class UploadGate {
+    private let lock = NSLock()
+    private var value = false
+    var isOn: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return value }
+        set { lock.lock(); value = newValue; lock.unlock() }
+    }
+}
+
 /// One TCP connection; handles requests one after another (keep-alive).
 private final class ClientConnection {
     private let connection: NWConnection
     private let roots: [URL]
+    private let uploadRoot: URL?
+    private let uploads: UploadGate
     private let queue = DispatchQueue(label: "mirror.server.connection")
     private var buffer = Data()
     private var closed = false
@@ -104,9 +127,11 @@ private final class ClientConnection {
     private static let maxHeadSize = 32 * 1024
     private static let headTerminator = Data("\r\n\r\n".utf8)
 
-    init(connection: NWConnection, roots: [URL]) {
+    init(connection: NWConnection, roots: [URL], uploadRoot: URL?, uploads: UploadGate) {
         self.connection = connection
         self.roots = roots
+        self.uploadRoot = uploadRoot
+        self.uploads = uploads
     }
 
     func start() {
@@ -159,13 +184,17 @@ private final class ClientConnection {
             sendSimple(.badRequest, keepAlive: false)
             return
         }
+        let keepAlive = !request.wantsClose
+        if request.method == "PUT" {
+            handleUpload(request, keepAlive: keepAlive)
+            return
+        }
         // GET/HEAD requests carry no body; drop any declared body so it isn't parsed as a request.
         if let length = request.headers["content-length"].flatMap(Int.init), length > 0 {
             buffer.removeAll()
         }
-        let keepAlive = !request.wantsClose
         guard request.method == "GET" || request.method == "HEAD" else {
-            sendSimple(.methodNotAllowed, keepAlive: keepAlive, extra: [("Allow", "GET, HEAD")])
+            sendSimple(.methodNotAllowed, keepAlive: false, extra: [("Allow", "GET, HEAD, PUT")])
             return
         }
         let isHead = request.method == "HEAD"
@@ -209,6 +238,117 @@ private final class ClientConnection {
             return
         }
         serveFile(url, request: request, isHead: isHead, keepAlive: keepAlive)
+    }
+
+    // MARK: Uploads
+
+    /// PUT: streams the body into a hidden temporary file next to the target, then renames it, so a
+    /// broken transfer never leaves a truncated file under the real name.
+    private func handleUpload(_ request: HTTPRequest, keepAlive: Bool) {
+        // Errors close the connection: the unread body would otherwise be parsed as a request.
+        guard uploads.isOn, let root = uploadRoot else {
+            sendSimple(.forbidden, keepAlive: false, message: "Uploads are off. Turn on Accept Uploads in Pocket Mirror.")
+            return
+        }
+        guard let length = request.headers["content-length"].flatMap(Int64.init), length >= 0 else {
+            sendSimple(.lengthRequired, keepAlive: false)
+            return
+        }
+        guard let path = request.path, !path.hasSuffix("/"),
+              let target = HTTPCore.resolve(path: path, root: root),
+              !target.lastPathComponent.hasPrefix(".") else {
+            sendSimple(.forbidden, keepAlive: false)
+            return
+        }
+        let fm = FileManager.default
+        let folder = target.deletingLastPathComponent()
+        do {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        } catch {
+            sendSimple(.forbidden, keepAlive: false, message: "Can't create \(folder.lastPathComponent): \(error.localizedDescription)")
+            return
+        }
+        var isDir: ObjCBool = false
+        if fm.fileExists(atPath: target.path, isDirectory: &isDir), isDir.boolValue {
+            sendSimple(.forbidden, keepAlive: false, message: "A folder already has that name.")
+            return
+        }
+        if let free = (try? folder.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage, free > 0, length + 50_000_000 > free {
+            sendSimple(.insufficientStorage, keepAlive: false,
+                       message: "Not enough space on the phone: \(length / 1_000_000) MB needed, \(free / 1_000_000) MB free.")
+            return
+        }
+        let temp = folder.appendingPathComponent(".upload-\(UUID().uuidString)-\(target.lastPathComponent)")
+        guard fm.createFile(atPath: temp.path, contents: nil), let handle = try? FileHandle(forWritingTo: temp) else {
+            sendSimple(.serverError, keepAlive: false, message: "Can't write the file.")
+            return
+        }
+        let upload = Upload(handle: handle, temp: temp, target: target, remaining: length, total: length, keepAlive: keepAlive)
+
+        // Body bytes that arrived together with the request head.
+        let early = Int(min(Int64(buffer.count), length))
+        if early > 0 {
+            handle.write(buffer.prefix(early))
+            buffer.removeFirst(early)
+            upload.remaining -= Int64(early)
+        }
+        let continueBody: () -> Void = { [weak self] in self?.receiveBody(upload) }
+        if request.headers["expect"]?.lowercased() == "100-continue", upload.remaining > 0 {
+            send(Data("HTTP/1.1 100 Continue\r\n\r\n".utf8), then: continueBody)
+        } else {
+            continueBody()
+        }
+    }
+
+    private final class Upload {
+        let handle: FileHandle, temp: URL, target: URL, total: Int64, keepAlive: Bool
+        var remaining: Int64
+        init(handle: FileHandle, temp: URL, target: URL, remaining: Int64, total: Int64, keepAlive: Bool) {
+            (self.handle, self.temp, self.target, self.remaining, self.total, self.keepAlive) =
+                (handle, temp, target, remaining, total, keepAlive)
+        }
+        func abandon() {
+            handle.closeFile()
+            try? FileManager.default.removeItem(at: temp)
+        }
+    }
+
+    private func receiveBody(_ upload: Upload) {
+        if upload.remaining == 0 {
+            finishUpload(upload)
+            return
+        }
+        let wanted = Int(min(Int64(1 << 20), upload.remaining))
+        connection.receive(minimumIncompleteLength: 1, maximumLength: wanted) { [weak self] data, _, isComplete, error in
+            guard let self else { upload.abandon(); return }
+            if let data, !data.isEmpty {
+                upload.handle.write(data)
+                upload.remaining -= Int64(data.count)
+            }
+            if upload.remaining == 0 {
+                self.finishUpload(upload)
+            } else if error != nil || isComplete {
+                upload.abandon() // connection ended early: keep nothing
+                self.connection.cancel()
+            } else {
+                self.receiveBody(upload)
+            }
+        }
+    }
+
+    private func finishUpload(_ upload: Upload) {
+        upload.handle.closeFile()
+        let fm = FileManager.default
+        do {
+            if fm.fileExists(atPath: upload.target.path) { try fm.removeItem(at: upload.target) }
+            try fm.moveItem(at: upload.temp, to: upload.target)
+        } catch {
+            try? fm.removeItem(at: upload.temp)
+            sendSimple(.serverError, keepAlive: false, message: "Saving failed: \(error.localizedDescription)")
+            return
+        }
+        sendSimple(.created, keepAlive: upload.keepAlive, message: "Saved \(upload.total) bytes")
     }
 
     // MARK: Responses
@@ -309,8 +449,8 @@ private final class ClientConnection {
         send(data) { [weak self] in self?.finishResponse(keepAlive: keepAlive) }
     }
 
-    private func sendSimple(_ status: HTTPStatus, keepAlive: Bool, extra: [(String, String)] = []) {
-        let body = Data("\(status.rawValue) \(status.reason)\n".utf8)
+    private func sendSimple(_ status: HTTPStatus, keepAlive: Bool, extra: [(String, String)] = [], message: String? = nil) {
+        let body = Data("\(status.rawValue) \(status.reason)\(message.map { ": " + $0 } ?? "")\n".utf8)
         var headers = baseHeaders(keepAlive: keepAlive) + extra
         headers.append(("Content-Type", "text/plain; charset=utf-8"))
         headers.append(("Content-Length", String(body.count)))

@@ -37,6 +37,11 @@ no simulator testing: the simulator is not an iPhone 11 on iOS 14, so results th
   The app's own step log is in Settings > Diagnostics.
   `libimobiledevice` is installed on the Mac (`idevicecrashreport`) if the phone is plugged in.
 
+- **The phone's apps are installed with TrollStore**, which registers them as system apps. They don't
+  appear in Finder's Files tab, and usbmux file sharing (`afcclient --documents`) refuses them. To
+  copy content in, use Pocket Mirror's upload path: turn on Accept Uploads in the app, then run
+  `tools/push-content.sh <folder>`, which sends HTTP PUTs over USB through `iproxy`.
+
 ## Layout
 - `apps/PocketAssistant`: on-device chat (llama.cpp submodule pinned at 4d828bd; don't bump it without a
   reason)

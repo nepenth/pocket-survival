@@ -80,4 +80,34 @@ kill $SERVER_PID; wait $SERVER_PID 2>/dev/null || true
 for _ in $(seq 50); do curl -s -o /dev/null "$BASE/" && break; sleep 0.1; done
 check "LAN on: bound to all interfaces"  "*:$PORT" "$(lsof -nP -a -p $SERVER_PID -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $9; exit}')"
 
+# Uploads (PUT) are refused while switched off...
+check "PUT while uploads off -> 403"     "403" "$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary hi "$BASE/maps/x.txt")"
+kill $SERVER_PID; wait $SERVER_PID 2>/dev/null || true
+# ...and accepted when on. Same order as the app: built-in pages first, content folder (upload root) last.
+"$WORK/rangetest" "$WEB:$ROOT" "$PORT" upload & SERVER_PID=$!
+for _ in $(seq 50); do curl -s -o /dev/null "$BASE/" && break; sleep 0.1; done
+UP="$WORK/upload.bin"; head -c 314572800 /dev/urandom > "$UP"   # 300 MiB of random bytes
+check "PUT without length -> 411"        "411" "$(printf x | curl -s -o /dev/null -w '%{http_code}' -T - "$BASE/chunked.txt")"
+check "PUT 300 MiB -> 201"               "201" "$(curl -s -o /dev/null -w '%{http_code}' -T "$UP" "$BASE/new%20folder/upload.bin")"
+check "uploaded bytes identical"         "$(shasum -a 256 < "$UP")" "$(shasum -a 256 < "$ROOT/new folder/upload.bin")"
+check "uploaded file served back"        "$(shasum -a 256 < "$UP")" "$(curl -s "$BASE/new%20folder/upload.bin" | shasum -a 256)"
+check "no temporary files left"          "" "$(ls -A "$ROOT/new folder" | grep '^\.upload-' || true)"
+check "PUT overwrites existing file"     "second" "$(curl -s -o /dev/null -X PUT --data-binary second "$BASE/new%20folder/upload.bin"; cat "$ROOT/new folder/upload.bin")"
+check "PUT empty file -> 201"            "201" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Length: 0' -X PUT "$BASE/empty.txt")"
+check "PUT traversal refused"            "403" "$(curl -s -o /dev/null -w '%{http_code}' --path-as-is -X PUT --data-binary x "$BASE/../escape.txt")"
+check "PUT onto a folder refused"        "403" "$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary x "$BASE/maps")"
+check "nothing written outside root"     "no" "$([ -e "$WORK/escape.txt" ] && echo yes || echo no)"
+check "PUT can't replace built-in pages" "built-in only" "$(curl -s -o /dev/null -X PUT --data-binary x "$BASE/app.js"; curl -s "$BASE/app.js")"
+# A transfer cut off half-way leaves nothing behind (sends 1 MB of a declared 10 MB, then disconnects).
+python3 - "$PORT" <<'PY'
+import socket, sys
+s = socket.create_connection(("127.0.0.1", int(sys.argv[1])))
+s.sendall(b"PUT /partial.bin HTTP/1.1\r\nHost: x\r\nContent-Length: 10000000\r\n\r\n" + b"a" * 1000000)
+s.close()
+PY
+sleep 0.5
+check "aborted upload leaves no file"    "no" "$([ -e "$ROOT/partial.bin" ] && echo yes || echo no)"
+check "aborted upload leaves no temp"    "" "$(ls -A "$ROOT" | grep '^\.upload-' || true)"
+check "100-continue honoured"            "201" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Expect: 100-continue' -T "$ROOT/index.html" "$BASE/copy.html")"
+
 exit $fail
