@@ -43,7 +43,20 @@
       } else { label.textContent = 'No maps loaded yet'; tile.classList.add('off'); }
     })
     .catch(function () {});
-  probe('library', '/library/', 'Browse archives', 'Not loaded yet');
+  // The library is served by Kiwix on port 8091 (same host, so it also works over Wi-Fi sharing).
+  (function () {
+    var tile = document.getElementById('library'), label = tile.querySelector('span');
+    tile.href = location.protocol + '//' + location.hostname + ':8091/';
+    fetch('/library/library.json', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (m) {
+        if (m && m.archives && m.archives.length) {
+          var gb = m.archives.reduce(function (t, a) { return t + a.bytes; }, 0) / 1e9;
+          label.textContent = m.archives.length + ' archives · ' + gb.toFixed(1) + ' GB · search';
+        } else { label.textContent = 'Not loaded yet'; tile.classList.add('off'); }
+      })
+      .catch(function () { label.textContent = 'Not loaded yet'; tile.classList.add('off'); });
+  })();
   probe('guide', '/guide/', 'Survival guide', 'Not loaded yet');
   probe('books', '/books/', 'Reference books', 'Not loaded yet');
   document.getElementById('footer').textContent = 'Served by Pocket Mirror at ' + location.host;

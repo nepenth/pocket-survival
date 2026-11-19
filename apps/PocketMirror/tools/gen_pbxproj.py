@@ -2,14 +2,14 @@
 """Generates PocketMirror.xcodeproj/project.pbxproj.
 
 The project is written by this script (there is no local Xcode that can target iOS 14), so add new
-source files to SWIFT_FILES below and re-run:  python3 apps/PocketMirror/tools/gen_pbxproj.py
+source files to SWIFT_FILES (or HEADERS) below and re-run:  python3 apps/PocketMirror/tools/gen_pbxproj.py
 """
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "PocketMirror.xcodeproj", "project.pbxproj")
 
-MARKETING_VERSION = "0.4.0"
+MARKETING_VERSION = "0.5.0"
 BUNDLE_ID = "net.pocketsurvival.mirror"
 
 # (file name, subgroup under PocketMirror/ or None)
@@ -20,7 +20,19 @@ SWIFT_FILES = [
     ("MirrorWebView.swift", None),
     ("HTTPCore.swift", "Server"),
     ("MirrorServer.swift", "Server"),
+    ("KiwixServer.mm", "Kiwix"),          # Objective-C++ bridge to libkiwix
 ]
+# Headers: listed in the project but not compiled on their own.
+HEADERS = [
+    ("KiwixServer.h", "Kiwix"),
+    ("PocketMirror-Bridging-Header.h", None),
+]
+# libkiwix and its dependencies, built for iOS 14 by ci/build-libkiwix-ios14.sh (not committed).
+KIWIX_XCFRAMEWORK = "build/kiwix/CoreKiwix.xcframework"
+
+
+def filetype(name):
+    return {"swift": "sourcecode.swift", "mm": "sourcecode.cpp.objcpp", "h": "sourcecode.c.h"}[name.rsplit(".", 1)[1]]
 
 _ids = {}
 
@@ -36,6 +48,8 @@ def target_settings(cfg):
     opt = ('SWIFT_OPTIMIZATION_LEVEL = "-Onone";' if cfg == "Debug"
            else "SWIFT_COMPILATION_MODE = wholemodule;")
     return f"""				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LIBRARY = "libc++";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -51,10 +65,22 @@ def target_settings(cfg):
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = {MARKETING_VERSION};
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-liconv",
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CFNetwork,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = {BUNDLE_ID};
 				PRODUCT_NAME = PocketMirror;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_OBJC_BRIDGING_HEADER = "PocketMirror/PocketMirror-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				{opt}"""
@@ -88,23 +114,26 @@ def main():
     buildfiles = [f"\t\t{oid('bf_' + f)} /* {f} in Sources */ = {{isa = PBXBuildFile; fileRef = {oid('fr_' + f)} /* {f} */; }};"
                   for f, _ in SWIFT_FILES]
     buildfiles += [
+        f"\t\t{oid('bf_kiwix')} /* CoreKiwix.xcframework in Frameworks */ = {{isa = PBXBuildFile; fileRef = {oid('fr_kiwix')} /* CoreKiwix.xcframework */; }};",
         f"\t\t{oid('bf_assets')} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {oid('fr_assets')} /* Assets.xcassets */; }};",
         f"\t\t{oid('bf_demo')} /* Web in Resources */ = {{isa = PBXBuildFile; fileRef = {oid('fr_demo')} /* Web */; }};",
     ]
-    filerefs = [f"\t\t{oid('fr_' + f)} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {f}; sourceTree = \"<group>\"; }};"
-                for f, _ in SWIFT_FILES]
+    filerefs = [f"\t\t{oid('fr_' + f)} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = {filetype(f)}; path = {f}; sourceTree = \"<group>\"; }};"
+                for f, _ in SWIFT_FILES + HEADERS]
+    filerefs.append(f"\t\t{oid('fr_kiwix')} /* CoreKiwix.xcframework */ = {{isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = CoreKiwix.xcframework; path = {KIWIX_XCFRAMEWORK}; sourceTree = SOURCE_ROOT; }};")
     filerefs += [
         f"\t\t{oid('fr_assets')} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = \"<group>\"; }};",
         f"\t\t{oid('fr_demo')} /* Web */ = {{isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = \"<group>\"; }};",
         f"\t\t{oid('fr_plist')} /* Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = \"<group>\"; }};",
         f"\t\t{oid('fr_app')} /* PocketMirror.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketMirror.app; sourceTree = BUILT_PRODUCTS_DIR; }};",
     ]
-    subgroups = sorted({g for _, g in SWIFT_FILES if g})
-    top_children = nl.join(f"\t\t\t\t{oid('fr_' + f)} /* {f} */," for f, g in SWIFT_FILES if g is None)
+    all_files = SWIFT_FILES + HEADERS
+    subgroups = sorted({g for _, g in all_files if g})
+    top_children = nl.join(f"\t\t\t\t{oid('fr_' + f)} /* {f} */," for f, g in all_files if g is None)
     top_children += nl + nl.join(f"\t\t\t\t{oid('grp_' + g)} /* {g} */," for g in subgroups)
     subgroup_defs = ""
     for g in subgroups:
-        kids = nl.join(f"\t\t\t\t{oid('fr_' + f)} /* {f} */," for f, gg in SWIFT_FILES if gg == g)
+        kids = nl.join(f"\t\t\t\t{oid('fr_' + f)} /* {f} */," for f, gg in all_files if gg == g)
         subgroup_defs += f"""		{oid('grp_' + g)} /* {g} */ = {{
 			isa = PBXGroup;
 			children = (
@@ -137,6 +166,7 @@ def main():
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				{oid('bf_kiwix')} /* CoreKiwix.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		}};
@@ -147,6 +177,7 @@ def main():
 			isa = PBXGroup;
 			children = (
 				{oid('grp_src')} /* PocketMirror */,
+				{oid('fr_kiwix')} /* CoreKiwix.xcframework */,
 				{oid('grp_products')} /* Products */,
 			);
 			sourceTree = "<group>";

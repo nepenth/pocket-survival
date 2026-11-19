@@ -13,8 +13,10 @@
 		B10C00000000000000000007 /* MirrorWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10C00000000000000000008 /* MirrorWebView.swift */; };
 		B10C00000000000000000009 /* HTTPCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10C0000000000000000000A /* HTTPCore.swift */; };
 		B10C0000000000000000000B /* MirrorServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10C0000000000000000000C /* MirrorServer.swift */; };
-		B10C0000000000000000000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10C0000000000000000000E /* Assets.xcassets */; };
-		B10C0000000000000000000F /* Web in Resources */ = {isa = PBXBuildFile; fileRef = B10C00000000000000000010 /* Web */; };
+		B10C0000000000000000000D /* KiwixServer.mm in Sources */ = {isa = PBXBuildFile; fileRef = B10C0000000000000000000E /* KiwixServer.mm */; };
+		B10C0000000000000000000F /* CoreKiwix.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = B10C00000000000000000010 /* CoreKiwix.xcframework */; };
+		B10C00000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10C00000000000000000012 /* Assets.xcassets */; };
+		B10C00000000000000000013 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = B10C00000000000000000014 /* Web */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,47 +26,64 @@
 		B10C00000000000000000008 /* MirrorWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MirrorWebView.swift; sourceTree = "<group>"; };
 		B10C0000000000000000000A /* HTTPCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPCore.swift; sourceTree = "<group>"; };
 		B10C0000000000000000000C /* MirrorServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MirrorServer.swift; sourceTree = "<group>"; };
-		B10C0000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		B10C00000000000000000010 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
-		B10C00000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		B10C00000000000000000012 /* PocketMirror.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketMirror.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10C0000000000000000000E /* KiwixServer.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = KiwixServer.mm; sourceTree = "<group>"; };
+		B10C00000000000000000015 /* KiwixServer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KiwixServer.h; sourceTree = "<group>"; };
+		B10C00000000000000000016 /* PocketMirror-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PocketMirror-Bridging-Header.h; sourceTree = "<group>"; };
+		B10C00000000000000000010 /* CoreKiwix.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = CoreKiwix.xcframework; path = build/kiwix/CoreKiwix.xcframework; sourceTree = SOURCE_ROOT; };
+		B10C00000000000000000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B10C00000000000000000014 /* Web */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Web; sourceTree = "<group>"; };
+		B10C00000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B10C00000000000000000018 /* PocketMirror.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketMirror.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		B10C00000000000000000014 /* Frameworks */ = {
+		B10C0000000000000000001B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10C0000000000000000000F /* CoreKiwix.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		B10C00000000000000000015 = {
+		B10C0000000000000000001C = {
 			isa = PBXGroup;
 			children = (
-				B10C00000000000000000016 /* PocketMirror */,
-				B10C00000000000000000017 /* Products */,
+				B10C0000000000000000001D /* PocketMirror */,
+				B10C00000000000000000010 /* CoreKiwix.xcframework */,
+				B10C0000000000000000001E /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		B10C00000000000000000016 /* PocketMirror */ = {
+		B10C0000000000000000001D /* PocketMirror */ = {
 			isa = PBXGroup;
 			children = (
 				B10C00000000000000000002 /* PocketMirrorApp.swift */,
 				B10C00000000000000000004 /* ContentView.swift */,
 				B10C00000000000000000006 /* MirrorModel.swift */,
 				B10C00000000000000000008 /* MirrorWebView.swift */,
-				B10C00000000000000000013 /* Server */,
-				B10C0000000000000000000E /* Assets.xcassets */,
-				B10C00000000000000000010 /* Web */,
-				B10C00000000000000000011 /* Info.plist */,
+				B10C00000000000000000016 /* PocketMirror-Bridging-Header.h */,
+				B10C00000000000000000019 /* Kiwix */,
+				B10C0000000000000000001A /* Server */,
+				B10C00000000000000000012 /* Assets.xcassets */,
+				B10C00000000000000000014 /* Web */,
+				B10C00000000000000000017 /* Info.plist */,
 			);
 			path = PocketMirror;
 			sourceTree = "<group>";
 		};
-		B10C00000000000000000013 /* Server */ = {
+		B10C00000000000000000019 /* Kiwix */ = {
+			isa = PBXGroup;
+			children = (
+				B10C0000000000000000000E /* KiwixServer.mm */,
+				B10C00000000000000000015 /* KiwixServer.h */,
+			);
+			path = Kiwix;
+			sourceTree = "<group>";
+		};
+		B10C0000000000000000001A /* Server */ = {
 			isa = PBXGroup;
 			children = (
 				B10C0000000000000000000A /* HTTPCore.swift */,
@@ -73,10 +92,10 @@
 			path = Server;
 			sourceTree = "<group>";
 		};
-		B10C00000000000000000017 /* Products */ = {
+		B10C0000000000000000001E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				B10C00000000000000000012 /* PocketMirror.app */,
+				B10C00000000000000000018 /* PocketMirror.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -84,13 +103,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		B10C00000000000000000018 /* PocketMirror */ = {
+		B10C0000000000000000001F /* PocketMirror */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B10C00000000000000000019 /* Build configuration list for PBXNativeTarget "PocketMirror" */;
+			buildConfigurationList = B10C00000000000000000020 /* Build configuration list for PBXNativeTarget "PocketMirror" */;
 			buildPhases = (
-				B10C0000000000000000001A /* Sources */,
-				B10C00000000000000000014 /* Frameworks */,
-				B10C0000000000000000001B /* Resources */,
+				B10C00000000000000000021 /* Sources */,
+				B10C0000000000000000001B /* Frameworks */,
+				B10C00000000000000000022 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -98,20 +117,20 @@
 			);
 			name = PocketMirror;
 			productName = PocketMirror;
-			productReference = B10C00000000000000000012 /* PocketMirror.app */;
+			productReference = B10C00000000000000000018 /* PocketMirror.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		B10C0000000000000000001C /* Project object */ = {
+		B10C00000000000000000023 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1640;
 				LastUpgradeCheck = 1640;
 			};
-			buildConfigurationList = B10C0000000000000000001D /* Build configuration list for PBXProject "PocketMirror" */;
+			buildConfigurationList = B10C00000000000000000024 /* Build configuration list for PBXProject "PocketMirror" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -119,30 +138,30 @@
 				en,
 				Base,
 			);
-			mainGroup = B10C00000000000000000015;
-			productRefGroup = B10C00000000000000000017 /* Products */;
+			mainGroup = B10C0000000000000000001C;
+			productRefGroup = B10C0000000000000000001E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				B10C00000000000000000018 /* PocketMirror */,
+				B10C0000000000000000001F /* PocketMirror */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		B10C0000000000000000001B /* Resources */ = {
+		B10C00000000000000000022 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B10C0000000000000000000D /* Assets.xcassets in Resources */,
-				B10C0000000000000000000F /* Web in Resources */,
+				B10C00000000000000000011 /* Assets.xcassets in Resources */,
+				B10C00000000000000000013 /* Web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		B10C0000000000000000001A /* Sources */ = {
+		B10C00000000000000000021 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -152,13 +171,14 @@
 				B10C00000000000000000007 /* MirrorWebView.swift in Sources */,
 				B10C00000000000000000009 /* HTTPCore.swift in Sources */,
 				B10C0000000000000000000B /* MirrorServer.swift in Sources */,
+				B10C0000000000000000000D /* KiwixServer.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		B10C0000000000000000001E /* Debug */ = {
+		B10C00000000000000000025 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -178,7 +198,7 @@
 			};
 			name = Debug;
 		};
-		B10C0000000000000000001F /* Release */ = {
+		B10C00000000000000000026 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -196,10 +216,12 @@
 			};
 			name = Release;
 		};
-		B10C00000000000000000020 /* Debug */ = {
+		B10C00000000000000000027 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LIBRARY = "libc++";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -214,21 +236,35 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.0;
+				MARKETING_VERSION = 0.5.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-liconv",
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CFNetwork,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = net.pocketsurvival.mirror;
 				PRODUCT_NAME = PocketMirror;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_OBJC_BRIDGING_HEADER = "PocketMirror/PocketMirror-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
 		};
-		B10C00000000000000000021 /* Release */ = {
+		B10C00000000000000000028 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LIBRARY = "libc++";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -243,11 +279,23 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.4.0;
+				MARKETING_VERSION = 0.5.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+					"-liconv",
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CFNetwork,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = net.pocketsurvival.mirror;
 				PRODUCT_NAME = PocketMirror;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_OBJC_BRIDGING_HEADER = "PocketMirror/PocketMirror-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -257,25 +305,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		B10C0000000000000000001D /* Build configuration list for PBXProject "PocketMirror" */ = {
+		B10C00000000000000000024 /* Build configuration list for PBXProject "PocketMirror" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				B10C0000000000000000001E /* Debug */,
-				B10C0000000000000000001F /* Release */,
+				B10C00000000000000000025 /* Debug */,
+				B10C00000000000000000026 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B10C00000000000000000019 /* Build configuration list for PBXNativeTarget "PocketMirror" */ = {
+		B10C00000000000000000020 /* Build configuration list for PBXNativeTarget "PocketMirror" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				B10C00000000000000000020 /* Debug */,
-				B10C00000000000000000021 /* Release */,
+				B10C00000000000000000027 /* Debug */,
+				B10C00000000000000000028 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = B10C0000000000000000001C /* Project object */;
+	rootObject = B10C00000000000000000023 /* Project object */;
 }

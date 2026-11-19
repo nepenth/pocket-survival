@@ -31,6 +31,19 @@ jobs:
           sudo xcode-select -s "$XCODE_PATH"
           xcodebuild -version
 
+      - name: Restore libkiwix for iOS 14 (CoreKiwix.xcframework)
+        id: kiwix
+        uses: actions/cache@v4
+        with:
+          path: apps/PocketMirror/build/kiwix/CoreKiwix.xcframework
+          key: corekiwix-ios14-${{ hashFiles('apps/PocketMirror/ci/build-libkiwix-ios14.sh') }}
+
+      - name: Build libkiwix for iOS 14 (only when not cached)
+        if: steps.kiwix.outputs.cache-hit != 'true'
+        run: |
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+          ci/build-libkiwix-ios14.sh
+
       - name: Byte-range tests (server code on macOS, 3 GiB file)
         run: Tests/range-test.sh
 
@@ -68,6 +81,10 @@ jobs:
         run: |
           APP=$(ls -d Payload/*.app | head -1)
           echo "Weak imports:"; nm -m "$APP/PocketMirror" | grep "(undefined) weak" || true
+          # Anything iOS 15+ that the C++ libraries call unguarded would be NULL on iOS 14.
+          if nm -m "$APP/PocketMirror" | grep "(undefined) weak" | grep -vE "SwiftUI|_swift_FORCE_LOAD|os_unfair_lock|os_release|voucher_adopt|_availability_version_check"; then
+            echo "::warning::unexpected weak imports above; check they are guarded"
+          fi
           "$GITHUB_WORKSPACE/ci/verify-ios14.sh" "$APP"
 
       - name: Upload IPA

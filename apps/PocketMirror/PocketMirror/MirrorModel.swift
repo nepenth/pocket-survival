@@ -13,6 +13,8 @@ final class MirrorModel: ObservableObject {
     }
 
     static let port: UInt16 = 8090
+    /// libkiwix's own server for the ZIM library (browse + full-text search).
+    static let libraryPort: Int32 = 8091
     let localURL = URL(string: "http://127.0.0.1:\(MirrorModel.port)/")!
 
     @Published private(set) var source: Source
@@ -23,6 +25,8 @@ final class MirrorModel: ObservableObject {
         didSet { if lanEnabled != oldValue { restartServer() } }
     }
     @Published var problem: String?
+    /// e.g. "19 archives" or why the library isn't available.
+    @Published private(set) var libraryStatus = "Not loaded"
     /// Bumped when the served folder changes, so the browser reloads.
     @Published private(set) var contentVersion = 0
     /// Lets a computer send files into the content folder (see tools/push-content.sh). Off at every
@@ -35,6 +39,9 @@ final class MirrorModel: ObservableObject {
     }
 
     private let server = MirrorServer(port: MirrorModel.port)
+    private let kiwix = KiwixServer()
+    /// KiwixServer isn't thread-safe; opening archives can take a moment, so keep it off the main thread.
+    private let kiwixQueue = DispatchQueue(label: "mirror.kiwix")
     private var accessedFolder: URL?
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
@@ -144,14 +151,35 @@ final class MirrorModel: ObservableObject {
         // Built-in pages first, so content (or an upload) can never replace them; uploads land
         // only in the content folder.
         server.start(roots: [Self.webURL, root], uploadRoot: root, lan: lanEnabled)
+        startLibrary(contentRoot: root)
     }
 
     func restartServer() {
         startServer()
     }
 
+    /// Serves every .zim in <content>/library with libkiwix on port 8091.
+    private func startLibrary(contentRoot: URL) {
+        let folder = contentRoot.appendingPathComponent("library")
+        let zims = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+            .filter { $0.lowercased().hasSuffix(".zim") }
+            .sorted()
+            .map { folder.appendingPathComponent($0).path }
+        let lan = lanEnabled
+        libraryStatus = zims.isEmpty ? "No archives in the library folder" : "Opening \(zims.count) archives…"
+        kiwixQueue.async { [kiwix] in
+            let opened = zims.isEmpty ? 0 : kiwix.start(withZimPaths: zims, port: Self.libraryPort, lan: lan)
+            if zims.isEmpty { kiwix.stop() }
+            let status = zims.isEmpty ? "No archives in the library folder"
+                : opened > 0 ? "\(opened) archive\(opened == 1 ? "" : "s") ready" + (opened < zims.count ? " (\(zims.count - opened) unreadable)" : "")
+                : (kiwix.lastError ?? "The library couldn't start")
+            DispatchQueue.main.async { self.libraryStatus = status }
+        }
+    }
+
     func stopServer() {
         server.stop()
+        kiwixQueue.async { [kiwix] in kiwix.stop() }
         releaseFolderAccess()
     }
 

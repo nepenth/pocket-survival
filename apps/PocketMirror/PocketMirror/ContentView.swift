@@ -55,6 +55,14 @@ struct SettingsView: View {
                         Button(model.isRunning ? "Restart" : "Start") { model.restartServer() }
                     }
                     HStack {
+                        Text("Library")
+                        Spacer()
+                        Text(model.libraryStatus)
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
                         Text("Address")
                         Spacer()
                         Text(model.localURL.absoluteString)
