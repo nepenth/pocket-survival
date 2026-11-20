@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Books</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/shelf.css">
+</head>
+<body>
+  <div class="top"><a href="/" class="back">‹ Home</a></div>
+  <h1>Books</h1>
+  <p class="sub" id="sub">Field manuals and health guides.</p>
+
+  <form class="searchbar" id="form" autocomplete="off" onsubmit="return false">
+    <input id="q" type="search" placeholder="Find a book or chapter…" autocorrect="off" autocapitalize="off" spellcheck="false">
+  </form>
+
+  <div id="recent"></div>
+  <div id="shelf"><p class="sub">Loading…</p></div>
+
+<script src="books.js"></script>
+</body>
+</html>

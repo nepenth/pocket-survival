@@ -59,6 +59,8 @@ hesperian() { # code folder
 hesperian wtnd_2025 "Where There Is No Doctor (Hesperian 2025)"
 hesperian wwhnd_2024 "Where Women Have No Doctor (Hesperian 2024)"
 
+echo "== Index for the Books page (books.json)"
+swift tools/build-books-index.swift "$OUT" 2>&1 | grep -v "CoreGraphics PDF"
 ( cd "$OUT" && find . -name '*.pdf' -type f | sort | while read -r f; do shasum -a 256 "$f"; done ) > "$OUT/SHA256SUMS"
 echo "$ok files present, $fail failed; $(du -sh "$OUT" | cut -f1) in $OUT"
 [ "$fail" = 0 ]

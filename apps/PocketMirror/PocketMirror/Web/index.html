@@ -43,10 +43,9 @@
       } else { label.textContent = 'No maps loaded yet'; tile.classList.add('off'); }
     })
     .catch(function () {});
-  // The library is served by Kiwix on port 8091 (same host, so it also works over Wi-Fi sharing).
+  // The library is served by Kiwix on port 8091; /library/ is our own page over it (library/library.js).
   (function () {
     var tile = document.getElementById('library'), label = tile.querySelector('span');
-    tile.href = location.protocol + '//' + location.hostname + ':8091/';
     fetch('/library/library.json', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (m) {

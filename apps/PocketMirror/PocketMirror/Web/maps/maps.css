@@ -37,6 +37,7 @@ body.map-page .leaflet-popup-content, body.map-page .coords { -webkit-user-selec
 .search-results .hit:active { background: var(--card-press); }
 .search-results .hit b { display: block; font-size: 17px; }
 .search-results .hit span { color: var(--muted); font-size: 14px; }
+.search-results .hint { color: var(--muted); font-size: 13px; padding: 4px 4px 6px; }
 .search-results .empty { color: var(--muted); padding: 14px 4px; }
 .map-btn.locate.on { color: #fff; background: var(--accent); }
 .map-btn.locate.follow { color: #fff; background: #2f7fe0; }
@@ -69,3 +70,15 @@ body.map-page .leaflet-popup-content, body.map-page .coords { -webkit-user-selec
   width: 18px; height: 18px; border-radius: 50%; background: #2f7fe0;
   border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
+
+/* Guide bar: distance and bearing to the chosen target. */
+.guide {
+  position: absolute; z-index: 1000; left: 68px; right: 76px; top: max(12px, env(safe-area-inset-top));
+  display: flex; gap: 10px; align-items: center; background: var(--card); color: var(--text);
+  border-radius: 14px; padding: 10px 12px; font-size: 15px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+}
+.guide[hidden] { display: none; }
+.guide #guideText { flex: 1; font-variant-numeric: tabular-nums; }
+.guide button { margin: 0; padding: 8px 12px; font-size: 15px; }
+.leaflet-popup-content .guide-btn { margin: 8px 0 0; padding: 8px 12px; font-size: 15px; width: 100%; }

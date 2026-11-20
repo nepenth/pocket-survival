@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Library</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/shelf.css">
+</head>
+<body>
+  <div class="top"><a href="/" class="back">‹ Home</a></div>
+  <h1>Library</h1>
+  <p class="sub" id="sub">Offline encyclopedias, medical references and how-to guides.</p>
+
+  <form class="searchbar" id="form" autocomplete="off">
+    <input id="q" type="search" placeholder="Search every book…" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <select id="scope" aria-label="Which book"><option value="">All books</option></select>
+  </form>
+
+  <div id="results"></div>
+  <div id="shelf"><p class="sub">Opening the library…</p></div>
+
+<script src="library.js"></script>
+</body>
+</html>

@@ -116,6 +116,7 @@
         ? ' · altitude ' + Math.round(p.coords.altitude) + ' m (' + Math.round(p.coords.altitude * 3.28084) + ' ft)' : '';
       setStatus('You are here (±' + Math.round(p.coords.accuracy) + ' m)' + alt);
       coordsEl.textContent = formatLatLng(ll.lat, ll.lng);
+      updateGuide();
     }
 
     function onError(e) {
@@ -171,18 +172,62 @@
     })();
 
     function showPoint(latlng) {
-      var e = { latlng: latlng };
-      var text = '<b>' + formatLatLng(e.latlng.lat, e.latlng.lng) + '</b>';
+      var detail = '';
       if (lastFix) {
-        var meters = lastFix.latlng.distanceTo(e.latlng);
-        var miles = meters / 1609.344;
-        var bearing = bearingDeg(lastFix.latlng, e.latlng);
-        text += '<br>' + (miles >= 0.1 ? miles.toFixed(2) + ' mi' : Math.round(meters * 3.28084) + ' ft') +
-          ' (' + (meters >= 1000 ? (meters / 1000).toFixed(2) + ' km' : Math.round(meters) + ' m') + ')' +
+        var meters = lastFix.latlng.distanceTo(latlng), bearing = bearingDeg(lastFix.latlng, latlng);
+        detail = distanceText(meters) + ' (' + (meters >= 1000 ? (meters / 1000).toFixed(2) + ' km' : Math.round(meters) + ' m') + ')' +
           ' at ' + Math.round(bearing) + '° ' + compass(bearing) + ' from you';
       }
-      L.popup().setLatLng(e.latlng).setContent(text).openOn(map);
+      L.popup().setLatLng(latlng).setContent(pointPopup(latlng, null, detail)).openOn(map);
     }
+
+    // Popup for a place or a pressed point, with a "Guide me" button.
+    var popupTarget = null;
+    function pointPopup(ll, name, detail) {
+      popupTarget = { latlng: ll, name: name || formatLatLng(ll.lat, ll.lng).split('  ')[0] };
+      return (name ? '<b>' + escapeHtml(name) + '</b><br>' : '<b>' + formatLatLng(ll.lat, ll.lng) + '</b><br>') +
+        (detail ? escapeHtml(detail) + '<br>' : '') + (name ? formatLatLng(ll.lat, ll.lng) + '<br>' : '') +
+        '<button class="guide-btn" type="button">Guide me here</button>';
+    }
+    // Leaflet stops clicks inside popups from reaching the map, so wire the button on open.
+    map.on('popupopen', function (e) {
+      var btn = e.popup.getElement() && e.popup.getElement().querySelector('.guide-btn');
+      var target = popupTarget;
+      if (btn) btn.addEventListener('click', function () { startGuide(target); map.closePopup(); });
+    });
+
+    // --- Guide: straight-line distance and bearing to a target, updated with each GPS fix ----
+    // Not road directions: a compass heading, like map-and-compass navigation.
+    var guide = null, guideLine = null, guideEl = document.getElementById('guide');
+    var guideText = document.getElementById('guideText');
+    // Magnetic declination for New England (WMM 2025, about ±1°): west, so a compass reads more.
+    function declination(ll) { return -14 - 0.75 * (ll.lng + 71) - 0.3 * (ll.lat - 42.4); }
+    function updateGuide() {
+      if (!guide) return;
+      if (!lastFix) { guideText.textContent = 'To ' + guide.name + ': waiting for GPS…'; return; }
+      var from = lastFix.latlng, to = guide.latlng, meters = from.distanceTo(to);
+      var trueB = bearingDeg(from, to), magB = (trueB - declination(from) + 360) % 360;
+      if (guide.fitPending) {   // first fix after "Guide me": show both ends
+        guide.fitPending = false;
+        if (follow) { follow = false; setButton(); }
+        map.fitBounds(L.latLngBounds([from, to]).pad(0.2), { maxZoom: 15 });
+      }
+      if (guideLine) guideLine.setLatLngs([from, to]);
+      else guideLine = L.polyline([from, to], { color: '#e8822e', weight: 4, dashArray: '8 8', interactive: false }).addTo(map);
+      guideText.innerHTML = '<b>' + escapeHtml(guide.name) + '</b><br>' + distanceText(meters) + ' ' + compass(trueB) +
+        ' · bearing ' + Math.round(trueB) + '° true, ' + Math.round(magB) + '° on a compass' +
+        (meters < Math.max(30, lastFix.accuracy) ? '<br>You are there.' : '');
+    }
+    function startGuide(t) {
+      guide = { latlng: t.latlng, name: t.name, fitPending: true };
+      guideEl.hidden = false;
+      if (watchId === null) locateBtn.click();   // guiding needs the GPS
+      updateGuide();
+    }
+    document.getElementById('guideStop').addEventListener('click', function () {
+      guide = null; guideEl.hidden = true;
+      if (guideLine) { map.removeLayer(guideLine); guideLine = null; }
+    });
 
     function bearingDeg(a, b) {
       var toRad = Math.PI / 180, lat1 = a.lat * toRad, lat2 = b.lat * toRad, dLng = (b.lng - a.lng) * toRad;
@@ -272,37 +317,50 @@
       });
     }
     function reference() { return lastFix ? lastFix.latlng : map.getCenter(); }
+    function distanceText(meters) {
+      var miles = meters / 1609.344;
+      if (miles < 0.1) return Math.round(meters * 3.28084) + ' ft';
+      return (miles < 10 ? miles.toFixed(1) : Math.round(miles)) + ' mi';
+    }
     function describe(p, ref) {
-      var ll = L.latLng(p[2], p[3]), meters = ref.distanceTo(ll), miles = meters / 1609.344;
-      var bits = [kinds[p[1]][0], p[4]];
+      var ll = L.latLng(p[2], p[3]);
+      var bits = [distanceText(ref.distanceTo(ll)) + ' ' + compass(bearingDeg(ref, ll)), kinds[p[1]][0], p[4]];
       if (p.length > 5) bits.push(Math.round(p[5] * 3.28084).toLocaleString() + ' ft');
-      bits.push((miles < 10 ? miles.toFixed(1) : Math.round(miles)) + ' mi ' + compass(bearingDeg(ref, ll)) +
-        (lastFix ? ' of you' : ' of map centre'));
       return bits.join(' · ');
     }
+    // Kinds a query can name ("hospital", "huts", "water"), matched on the folded label.
+    function kindsNamed(fq) {
+      var hit = {}, any = false, q = fq.replace(/s$/, '');
+      if (q.length < 3) return null;
+      kinds.forEach(function (k, id) {
+        var label = fold(k[0]);
+        if (label === q || label === fq || (label.indexOf(q) === 0 && q.length >= 4)) { hit[id] = true; any = true; }
+      });
+      return any ? hit : null;
+    }
+    // Closest first. Bigger places (towns, hospitals) count as a little closer than small ones
+    // (streams, towers), and a name that only contains the query mid-word ranks after real matches.
     function search(q) {
       var fq = fold(q.trim());
       if (fq.length < 2 || !places) { results.innerHTML = ''; return; }
-      var ref = reference(), hits = [];
+      var ref = reference(), hits = [], byKind = kindsNamed(fq);
       for (var i = 0; i < folded.length; i++) {
-        var n = folded[i], score;
-        if (n === fq) score = 0;
-        else if (n.indexOf(fq) === 0) score = 1;
-        else if (n.indexOf(' ' + fq) >= 0 || n.indexOf('-' + fq) >= 0) score = 2;
-        else if (fq.length >= 3 && n.indexOf(fq) >= 0) score = 3;
+        var n = folded[i], p = places[i], tier;
+        if (n === fq || n.indexOf(fq) === 0 || n.indexOf(' ' + fq) >= 0 || n.indexOf('-' + fq) >= 0) tier = 0;
+        else if (byKind && byKind[p[1]]) tier = 0;
+        else if (fq.length >= 3 && n.indexOf(fq) >= 0) tier = 1;
         else continue;
-        hits.push({ i: i, score: score });
+        var km = ref.distanceTo(L.latLng(p[2], p[3])) / 1000;
+        hits.push({ i: i, rank: tier * 1e6 + km / (1 + kinds[p[1]][1] / 4) });
       }
-      hits.forEach(function (h) {
-        var p = places[h.i];
-        h.rank = h.score * 100 - kinds[p[1]][1] * 6 + Math.min(ref.distanceTo(L.latLng(p[2], p[3])) / 25000, 60);
-      });
       hits.sort(function (a, b) { return a.rank - b.rank; });
       if (!hits.length) { results.innerHTML = '<div class="empty">No matches</div>'; return; }
-      results.innerHTML = hits.slice(0, 40).map(function (h) {
-        var p = places[h.i];
-        return '<div class="hit" data-i="' + h.i + '"><b>' + escapeHtml(p[0]) + '</b><span>' + escapeHtml(describe(p, ref)) + '</span></div>';
-      }).join('');
+      results.innerHTML = '<div class="hint">' + hits.length.toLocaleString() + (hits.length === 1 ? ' match' : ' matches') +
+        ', closest to ' + (lastFix ? 'you' : 'the map centre') + ' first' + (lastFix ? '' : ' (tap ◎ to use your position)') + '</div>' +
+        hits.slice(0, 50).map(function (h) {
+          var p = places[h.i];
+          return '<div class="hit" data-i="' + h.i + '"><b>' + escapeHtml(p[0]) + '</b><span>' + escapeHtml(describe(p, ref)) + '</span></div>';
+        }).join('');
     }
     function escapeHtml(s) {
       return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
@@ -318,8 +376,10 @@
       map.setView(ll, ZOOM[label] || 16);
       if (searchMarker) map.removeLayer(searchMarker);
       searchMarker = L.circleMarker(ll, { radius: 9, color: '#fff', weight: 3, fillColor: '#e8822e', fillOpacity: 1 }).addTo(map);
-      searchMarker.bindPopup('<b>' + escapeHtml(p[0]) + '</b><br>' + escapeHtml(describe(p, reference())) +
-        '<br>' + formatLatLng(p[2], p[3])).openPopup();
+      // Distance only from a real position: the map centre has just moved onto the place.
+      var detail = lastFix ? describe(p, lastFix.latlng) + ' of you'
+        : [label, p[4]].concat(p.length > 5 ? [Math.round(p[5] * 3.28084).toLocaleString() + ' ft'] : []).join(' · ');
+      searchMarker.bindPopup(pointPopup(ll, p[0], detail)).openPopup();
     });
     function openSearch() { panel.hidden = false; input.focus(); loadPlaces().then(function () { search(input.value); }); }
     function closeSearch() { panel.hidden = true; input.blur(); }
