@@ -1,6 +1,6 @@
 # Pocket Mirror library: ZIM archives from download.kiwix.org (sizes checked 2026-11-19).
 # Format: set | kiwix path under /zim/ | short title
-# Sets: core (fetched by default) and optional (fetch with: tools/fetch-library.sh optional).
+# Sets: core (fetched by default), engineering and optional (fetch with: tools/fetch-library.sh <set>).
 # To update an archive, change the file name to the newer date and re-run the script.
 
 # --- From the Pocket Mirror brief (8.3 GB) ---
@@ -26,10 +26,19 @@ core | stack_exchange/gardening.stackexchange.com_en_all_2026-10.zim | Gardening
 core | stack_exchange/mechanics.stackexchange.com_en_all_2026-10.zim | Vehicle Mechanics Q&A
 core | stack_exchange/cooking.stackexchange.com_en_all_2026-10.zim | Cooking Q&A
 
+# --- Engineering: practical building, power, electronics, chemistry (10.6 GB) ---
+engineering | stack_exchange/engineering.stackexchange.com_en_all_2026-10.zim | Engineering Q&A
+engineering | stack_exchange/electronics.stackexchange.com_en_all_2026-10.zim | Electrical Engineering Q&A
+engineering | stack_exchange/physics.stackexchange.com_en_all_2026-10.zim | Physics Q&A
+engineering | stack_exchange/chemistry.stackexchange.com_en_all_2026-10.zim | Chemistry Q&A
+engineering | stack_exchange/woodworking.stackexchange.com_en_all_2026-10.zim | Woodworking Q&A
+engineering | stack_exchange/homebrew.stackexchange.com_en_all_2026-10.zim | Homebrewing and fermentation Q&A
+engineering | stack_exchange/sustainability.stackexchange.com_en_all_2026-10.zim | Sustainable Living Q&A
+engineering | other/energypedia_en_all_maxi_2026-06.zim | energypedia (off-grid energy)
+engineering | wikibooks/wikibooks_en_all_nopic_2026-10.zim | Wikibooks (textbooks and how-tos)
+
 # --- Optional ---
-optional | wikibooks/wikibooks_en_all_nopic_2026-10.zim | Wikibooks (Cookbook, First Aid, how-tos)
 optional | gutenberg/gutenberg_en_lcc-s_2026-03.zim | Gutenberg: Agriculture
 optional | gutenberg/gutenberg_en_lcc-r_2026-03.zim | Gutenberg: Medicine
-optional | other/energypedia_en_all_nopic_2026-06.zim | energypedia (off-grid energy)
 optional | wikivoyage/wikivoyage_en_all_nopic_2026-09.zim | Wikivoyage
 optional | other/theworldfactbook_en_all_2026-02.zim | CIA World Factbook

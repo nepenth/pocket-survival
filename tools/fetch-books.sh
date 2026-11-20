@@ -43,6 +43,32 @@ for g in 1 2 3 4 5 6 7; do
   get "usda-home-canning" "$g Guide $g.pdf" "$NCHFP/GUIDE0${g}_HomeCan_rev0715.pdf"
 done
 
+echo "== Engineering: US Army engineer and technical manuals (public domain)"
+get engineering "Engineer Field Data (FM 5-34, 1999).pdf" "https://archive.org/download/fm-5-34-engineer-field-data-w-change-3-1999/FM%205-34%20Engineer%20Field%20Data%20w-change%203%20%201999.pdf"
+get engineering "General Engineering (FM 3-34.400).pdf" "https://archive.org/download/MManuals/Fm3-34-400GeneralEngineering.pdf"
+get engineering "Prime Power Operations (FM 3-34.480).pdf" "https://archive.org/download/MManuals/Fm3-34-480EngineerPrimePowerOperations.pdf"
+get engineering "Electrical Systems (FM 5-424).pdf" "https://archive.org/download/fm-5-424-theater-of-operations-electrical-systems-1997/FM%205-424%20Theater%20Of%20Operations%20Electrical%20Systems%20%201997.pdf"
+get engineering "Grounding and Bonding (TM 5-690).pdf" "https://archive.org/download/MManuals/Tm5-690GroundingAndBondingInC4isrFacilitiesempProtection.pdf"
+get engineering "Well-Drilling Operations (FM 5-484).pdf" "https://archive.org/download/FM_5_484_M_P_W_D_O_1994/FM%205-484%20Multiservice%20Procedures%20for%20Well-Drilling%20Operations%20%281994%29.pdf"
+get engineering "Water Supply Sources (TM 5-813).pdf" "https://archive.org/download/MManuals/Tm5-813usArmyWaterSupplySourcesGeneralConsider1987.pdf"
+get engineering "Small Water Systems (Corps of Engineers).pdf" "https://archive.org/download/MManuals/UsArmyCorpsOfEngineersSmallWaterSystems1999.pdf"
+get engineering "Rigging Techniques (FM 5-125).pdf" "https://archive.org/download/fm-5-125-rigging-techniques-procedures-and-applications-1995/FM%205-125%20Rigging%20Techniques%2C%20Procedures%2C%20And%20Applications%20%201995.pdf"
+get engineering "Concrete and Masonry (FM 5-428).pdf" "https://archive.org/download/fm-5-428-concrete-and-masonry-1998/FM%205-428%20Concrete%20and%20Masonry%201998.pdf"
+get engineering "Construction Print Reading (EN0113).pdf" "https://archive.org/download/MManuals/ConstructionPrintReadingEn0113.pdf"
+get engineering "Welding Theory and Application (TM 9-237).pdf" "https://archive.org/download/TM9-237/TM9-237.pdf"
+get engineering "Welding Design, Procedures and Inspection (TM 5-805).pdf" "https://archive.org/download/MManuals/Tm5-805UsArmyWeldingDesignProceduresInspection1985.pdf"
+get engineering "Field Antenna Handbook (MCRP 6-22D).pdf" "https://archive.org/download/MManuals/Mcrp6-22dUsmc-fieldAntenna-handbook.pdf"
+get engineering "Radio Wave Propagation and Antennas.pdf" "https://archive.org/download/MManuals/UsArmyElectronicRadioWavePropagationAntennas1986.pdf"
+get engineering "Tactical Radio Operations (FM 6-02.53).pdf" "https://archive.org/download/MManuals/Fm6-02-53TacticalRadioOperations.pdf"
+echo "== Engineering classics and appropriate technology (public domain)"
+get engineering-classics "Village Technology Handbook (VITA, USAID).pdf" "https://archive.org/download/pnaas277/pnaas277.pdf"
+get engineering-classics "Audels Engineers and Mechanics Guide, vol 1 (1921).pdf" "https://archive.org/download/audelsengineers01unkngoog/audelsengineers01unkngoog.pdf"
+get engineering-classics "Audels Engineers and Mechanics Guide, vol 2 (1921).pdf" "https://archive.org/download/audelsengineers00unkngoog/audelsengineers00unkngoog.pdf"
+get engineering-classics "Audels Engineers and Mechanics Guide, vol 3 (1921).pdf" "https://archive.org/download/audelsengineers03grahgoog/audelsengineers03grahgoog.pdf"
+get engineering-classics "Audels Engineers and Mechanics Guide, vol 5 (1921).pdf" "https://archive.org/download/audelsengineers05grahgoog/audelsengineers05grahgoog.pdf"
+get engineering-classics "Audels Gas Engine Manual (1908).pdf" "https://archive.org/download/audelsgasengine00unkngoog/audelsgasengine00unkngoog.pdf"
+get engineering-classics "Solar Hot Water (NREL).pdf" "https://archive.org/download/MManuals/Nrel_Learning-SolarHotWater.pdf"
+
 echo "== Hesperian Health Guides (free for personal use under Hesperian's open copyright)"
 hesperian() { # code folder
   local base="https://hesperian.org/wp-content/uploads/pdf/en_$1/en_$1" i

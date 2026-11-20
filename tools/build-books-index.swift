@@ -14,6 +14,8 @@ let known: [String: (String, String, Bool)] = [
   "army": ("US Army field manuals", "Survival, first aid, land navigation, cold weather and field hygiene. Public domain.", false),
   "fema": ("FEMA", "Are You Ready? The government's guide to disaster preparedness. Public domain.", false),
   "epa": ("EPA", "How to make water safe to drink in an emergency. Public domain.", false),
+  "engineering": ("US Army engineering manuals", "Field engineering data, power, wiring, wells and water, rigging, concrete, welding, antennas and radio. Public domain.", false),
+  "engineering-classics": ("Engineering classics", "The Village Technology Handbook, the Audels engineers' and gas engine guides (1908-1921) and solar hot water. Public domain.", false),
   "usda-home-canning": ("USDA Complete Guide to Home Canning", "Tested methods for canning fruit, vegetables, meat, pickles and jams (2015). Public domain.", true),
   "Where There Is No Doctor (Hesperian 2025)": ("Where There Is No Doctor", "Hesperian's village health care handbook, 2025 edition. Free for personal use.", true),
   "Where Women Have No Doctor (Hesperian 2024)": ("Where Women Have No Doctor", "Hesperian's health guide for women, 2024 edition. Free for personal use.", true),
