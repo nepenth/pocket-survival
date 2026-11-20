@@ -999,7 +999,6 @@ private struct SafariView: UIViewControllerRepresentable {
 private struct KitPiSection: View {
     @ObservedObject var llamaState: LlamaState
     @State private var hostDraft = ""
-    @State private var keyDraft = ""
 
     private var statusText: String {
         if let swapping = llamaState.piSwapping { return "Switching to \(swapping)… (about a minute)" }
@@ -1046,20 +1045,8 @@ private struct KitPiSection: View {
                 .disabled(llamaState.piSwapping != nil || llamaState.isGenerating)
             }
             if llamaState.piStatus != nil && !(llamaState.piStatus?.booksOK ?? false) {
-                Text(llamaState.piBooksKey.isEmpty
-                     ? "The book library needs its access key (below). Encyclopedias work without it."
-                     : "The book library didn't accept the key. Check it below.")
+                Text("The Pi's book library isn't answering; encyclopedia lookups still work.")
                     .font(.footnote).foregroundColor(.orange)
-            }
-            HStack {
-                Text("Book key")
-                SecureField("access key or link", text: $keyDraft, onCommit: {
-                    llamaState.piBooksKey = keyDraft
-                    Task { await llamaState.refreshPi() }
-                })
-                .multilineTextAlignment(.trailing)
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
             }
             HStack {
                 Text("Address")
@@ -1074,12 +1061,11 @@ private struct KitPiSection: View {
             }
             Button("Check Again") {
                 llamaState.piHost = hostDraft.trimmingCharacters(in: .whitespaces)
-                llamaState.piBooksKey = keyDraft
                 Task { await llamaState.refreshPi() }
             }
             .disabled(llamaState.piChecking)
         }
-        .onAppear { hostDraft = llamaState.piHost; keyDraft = llamaState.piBooksKey }
+        .onAppear { hostDraft = llamaState.piHost }
     }
 }
 

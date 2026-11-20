@@ -4,9 +4,9 @@ import UIKit
 /// The kit's Raspberry Pi, reached over its own Wi-Fi hotspot (or a home network). It runs:
 ///   :8080  llama.cpp server (OpenAI-style /v1/chat/completions; some models take photos)
 ///   :80    kit dashboard (/api/models, /api/model, POST /api/swap to change the model)
-///   :8890  Lastbook book library (/api/retrieve = passages with book and page; /api/page/<id>/<n>).
-///          Other devices must use the Pi's IP address (not a name) and send its access key as the
-///          sg_key cookie; the key is in Lastbook's derived/lan-key on the Pi and goes in Settings.
+///   :80    also /api/books/retrieve, /api/books/page/<id>/<n>: the dashboard's read-only pass-through
+///          to the Lastbook book library (:8890), which otherwise admits other devices only with
+///          its access key. No setup on the phone.
 ///   :8090  kiwix-serve (/search?format=xml across all the ZIM archives)
 /// On the hotspot every name resolves to the Pi, so the default address is just "survivalpi";
 /// the Wi-Fi network's .1 address is tried as well.
@@ -14,7 +14,7 @@ struct KitPiStatus: Equatable {
     var host: String
     /// IPv4 address the host name resolved to (Lastbook only accepts IP addresses).
     var ip: String
-    /// The book library answered with the access key.
+    /// The book library answered (through the dashboard).
     var booksOK: Bool
     var modelFile: String
     var vision: Bool
@@ -100,13 +100,6 @@ enum KitPi {
 
     // MARK: Finding the Pi
 
-    /// "abc123", or an access link ".../?key=abc123" pasted whole.
-    static func normalizedKey(_ s: String) -> String {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let r = t.range(of: "key=") { return String(t[r.upperBound...].prefix { $0 != "&" && $0 != "#" }) }
-        return t
-    }
-
     static func resolveIPv4(_ host: String) -> String? {
         var hints = addrinfo(ai_flags: 0, ai_family: AF_INET, ai_socktype: SOCK_STREAM, ai_protocol: 0,
                              ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
@@ -118,12 +111,8 @@ enum KitPi {
         return String(cString: buf)
     }
 
-    private static func booksRequest(_ ip: String, _ pathAndQuery: String, key: String) -> URLRequest? {
-        guard let url = URL(string: "http://\(ip):8890\(pathAndQuery)") else { return nil }
-        var req = URLRequest(url: url)
-        req.setValue("sg_key=\(key)", forHTTPHeaderField: "Cookie")
-        req.httpShouldHandleCookies = false
-        return req
+    private static func booksRequest(_ host: String, _ pathAndQuery: String) -> URLRequest? {
+        URL(string: "http://\(host)/api/books\(pathAndQuery)").map { URLRequest(url: $0) }
     }
 
     private static func getJSON(_ req: URLRequest?, timeout: TimeInterval) async -> [String: Any]? {
@@ -138,7 +127,7 @@ enum KitPi {
         return data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
     }
 
-    static func probe(_ configured: String, booksKey: String) async -> KitPiStatus? {
+    static func probe(_ configured: String) async -> KitPiStatus? {
         for host in candidates(configured) {
             guard let url = URL(string: "http://\(host):8080/props"),
                   let data = await get(url, timeout: 2.5),
@@ -152,10 +141,7 @@ enum KitPi {
                 models = list.compactMap { $0["name"] as? String }
             }
             let ip = await Task.detached { resolveIPv4(host) }.value ?? host
-            var booksOK = false
-            if !booksKey.isEmpty {
-                booksOK = await getJSON(booksRequest(ip, "/api/retrieve?q=water&k=1", key: booksKey), timeout: 3) != nil
-            }
+            let booksOK = await getJSON(booksRequest(ip, "/retrieve?q=water&k=1"), timeout: 3) != nil
             return KitPiStatus(host: host, ip: ip, booksOK: booksOK, modelFile: props["model_path"] as? String ?? "model",
                                vision: modalities?["vision"] as? Bool ?? false,
                                contextTokens: settings?["n_ctx"] as? Int ?? 4096, models: models)
@@ -204,12 +190,12 @@ enum KitPi {
 
     /// Book passages (Lastbook, with page text) and encyclopedia snippets (Kiwix), trimmed so the
     /// whole set stays near `maxChars`. Empty if the Pi's library can't be reached.
-    static func lookUp(_ question: String, pi: KitPiStatus, booksKey: String, maxChars: Int) async -> [SourceRef] {
+    static func lookUp(_ question: String, pi: KitPiStatus, maxChars: Int) async -> [SourceRef] {
         let q = keywords(question)
         guard !q.isEmpty else { return [] }
         // Books get most of the room: their passages are the most reliable.
         let window = max(500, maxChars * 2 / 9)
-        async let books = pi.booksOK ? lastbook(question, ip: pi.ip, key: booksKey, window: window) : []
+        async let books = pi.booksOK ? lastbook(question, host: pi.ip, window: window) : []
         async let wiki = kiwix(q, host: pi.ip)
         let wikiHits = await wiki.filter { titleMatches($0.title, keywords: q) }
         var all = Array(await books.prefix(3)) + Array(wikiHits.prefix(2))
@@ -250,9 +236,9 @@ enum KitPi {
         return (start > 0 ? "…" : "") + text[a..<b] + (start + window < text.count ? "…" : "")
     }
 
-    private static func lastbook(_ question: String, ip: String, key: String, window: Int) async -> [SourceRef] {
+    private static func lastbook(_ question: String, host: String, window: Int) async -> [SourceRef] {
         let q = question.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
-        guard let obj = await getJSON(booksRequest(ip, "/api/retrieve?q=\(q.prefix(400))&k=6", key: key), timeout: 6),
+        guard let obj = await getJSON(booksRequest(host, "/retrieve?q=\(q.prefix(400))&k=6"), timeout: 6),
               let results = obj["results"] as? [[String: Any]] else { return [] }
         var out: [SourceRef] = []
         for r in results where (r["kind"] as? String) == "pdf" {
@@ -262,7 +248,7 @@ enum KitPi {
             let excerpt = (r["excerpt"] as? String ?? "").replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "")
             var text = excerpt
             // The whole page reads better than the match snippet.
-            if let po = await getJSON(booksRequest(ip, "/api/page/\(id)/\(page)", key: key), timeout: 5),
+            if let po = await getJSON(booksRequest(host, "/page/\(id)/\(page)"), timeout: 5),
                let pageText = po["text"] as? String, !pageText.isEmpty {
                 text = pageText
             }

@@ -138,7 +138,7 @@ class LlamaState: ObservableObject {
     private let phoneSourceChars = 2600
 
     // MARK: Kit Pi (bigger models, photos, the full library) over its Wi-Fi
-    private static let piHostKey = "piHost", usePiKey = "usePi", useLibraryKey = "useLibrary", booksKeyKey = "piBooksKey"
+    private static let piHostKey = "piHost", usePiKey = "usePi", useLibraryKey = "useLibrary"
     /// Address of the kit's Pi; "survivalpi" works on its hotspot (every name resolves to it).
     @Published var piHost: String = UserDefaults.standard.string(forKey: LlamaState.piHostKey) ?? KitPi.defaultHost {
         didSet { UserDefaults.standard.set(piHost, forKey: Self.piHostKey) }
@@ -150,10 +150,6 @@ class LlamaState: ObservableObject {
     /// Look the question up in the kit's library first and give the passages to the model.
     @Published var useLibrary: Bool = UserDefaults.standard.object(forKey: LlamaState.useLibraryKey) as? Bool ?? true {
         didSet { UserDefaults.standard.set(useLibrary, forKey: Self.useLibraryKey) }
-    }
-    /// Access key for the Pi's book library (Lastbook's derived/lan-key), or its access link.
-    @Published var piBooksKey: String = UserDefaults.standard.string(forKey: LlamaState.booksKeyKey) ?? "" {
-        didSet { UserDefaults.standard.set(KitPi.normalizedKey(piBooksKey), forKey: Self.booksKeyKey) }
     }
     @Published var piStatus: KitPiStatus?
     @Published var piChecking = false
@@ -601,7 +597,7 @@ class LlamaState: ObservableObject {
     func refreshPi() async {
         guard !piChecking, piSwapping == nil else { return }
         piChecking = true
-        let status = await KitPi.probe(piHost, booksKey: KitPi.normalizedKey(piBooksKey))
+        let status = await KitPi.probe(piHost)
         piChecking = false
         if status != piStatus { piStatus = status }
     }
@@ -674,8 +670,7 @@ class LlamaState: ObservableObject {
                 if piStatus == nil { await refreshPi() }
                 if let status = piStatus {
                     replyPhase = "Looking in the library…"
-                    sources = await KitPi.lookUp(question, pi: status, booksKey: KitPi.normalizedKey(piBooksKey),
-                                                 maxChars: pi != nil ? 5000 : phoneSourceChars)
+                    sources = await KitPi.lookUp(question, pi: status, maxChars: pi != nil ? 5000 : phoneSourceChars)
                     if let i = messages.firstIndex(where: { $0.id == reply.id }), !sources.isEmpty { messages[i].sources = sources }
                 }
             }
