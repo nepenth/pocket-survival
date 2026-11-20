@@ -235,6 +235,10 @@ private struct MessageRow: View {
                         .font(.body)
                         .foregroundColor(.secondary)
                 }
+            } else if message.role == .assistant && !message.isNotice {
+                MarkdownText(text: message.text)
+                    .font(.body)
+                    .lineSpacing(4)
             } else {
                 Text(message.text)
                     .font(.body)
@@ -523,5 +527,204 @@ private struct SettingsView: View {
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
+    }
+}
+
+// MARK: - Markdown
+
+/// Renders the markdown small models like to write: headings, bullet and numbered lists,
+/// **bold**, *italic*, `code`, code blocks, quotes, rules and simple tables. Built from Text
+/// concatenation because iOS 14's SwiftUI has no markdown support (AttributedString is iOS 15+).
+/// Unfinished markup while a reply streams in just shows as plain text until it closes.
+private struct MarkdownText: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(Markdown.blocks(text).enumerated()), id: \.offset) { _, block in
+                Markdown.view(for: block)
+            }
+        }
+    }
+}
+
+private enum Markdown {
+    enum Block {
+        case paragraph(String)
+        case heading(Int, String)
+        case item(indent: Int, marker: String, text: String)
+        case code(String)
+        case quote(String)
+        case rule
+        case table([[String]])
+    }
+
+    static func blocks(_ text: String) -> [Block] {
+        var out: [Block] = []
+        var paragraph: [String] = []
+        var code: [String]? = nil
+        var table: [[String]] = []
+
+        func flushParagraph() {
+            if !paragraph.isEmpty { out.append(.paragraph(paragraph.joined(separator: "\n"))); paragraph = [] }
+        }
+        func flushTable() {
+            if !table.isEmpty { out.append(.table(table)); table = [] }
+        }
+
+        for raw in text.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if code != nil {
+                if line.hasPrefix("```") { out.append(.code(code!.joined(separator: "\n"))); code = nil }
+                else { code!.append(raw) }
+                continue
+            }
+            if line.hasPrefix("```") { flushParagraph(); flushTable(); code = []; continue }
+            if line.hasPrefix("|") {
+                flushParagraph()
+                let cells = line.trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                    .components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+                // Skip the |---|:---:| separator row.
+                if !cells.allSatisfy({ !$0.isEmpty && $0.allSatisfy { "-:".contains($0) } }) { table.append(cells) }
+                continue
+            }
+            flushTable()
+            if line.isEmpty { flushParagraph(); continue }
+            if line.count >= 3, Set(line.replacingOccurrences(of: " ", with: "")).count == 1,
+               let c = line.first, "-*_".contains(c) {
+                flushParagraph(); out.append(.rule); continue
+            }
+            if let hashes = line.firstIndex(where: { $0 != "#" }), line.hasPrefix("#"),
+               line[hashes] == " " {
+                flushParagraph()
+                let level = line.distance(from: line.startIndex, to: hashes)
+                out.append(.heading(level, String(line[hashes...]).trimmingCharacters(in: .whitespaces)))
+                continue
+            }
+            let indent = (raw.prefix { $0 == " " || $0 == "\t" }.count) / 2
+            if let first = line.first, "-*+•".contains(first), line.dropFirst().first == " " {
+                flushParagraph()
+                out.append(.item(indent: indent, marker: "•", text: String(line.dropFirst(2))))
+                continue
+            }
+            if let dot = line.firstIndex(where: { !$0.isNumber }), dot != line.startIndex,
+               ".)".contains(line[dot]), line[line.index(after: dot)...].first == " " {
+                flushParagraph()
+                out.append(.item(indent: indent, marker: String(line[...dot]),
+                                 text: String(line[line.index(dot, offsetBy: 2)...])))
+                continue
+            }
+            if line.hasPrefix(">") {
+                flushParagraph()
+                out.append(.quote(String(line.dropFirst()).trimmingCharacters(in: .whitespaces)))
+                continue
+            }
+            paragraph.append(line)
+        }
+        if let code { out.append(.code(code.joined(separator: "\n"))) }
+        flushParagraph()
+        flushTable()
+        return out
+    }
+
+    static func view(for block: Block) -> AnyView {
+        switch block {
+        case .paragraph(let s):
+            return AnyView(inline(s).fixedSize(horizontal: false, vertical: true))
+        case .heading(let level, let s):
+            return AnyView(inline(s).font(level <= 2 ? .title3 : .headline).fontWeight(.semibold)
+                .padding(.top, 4).fixedSize(horizontal: false, vertical: true))
+        case .item(let indent, let marker, let s):
+            return AnyView(HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(marker).foregroundColor(.secondary)
+                    .frame(minWidth: marker == "•" ? 12 : 22, alignment: .trailing)
+                inline(s).fixedSize(horizontal: false, vertical: true)
+            }.padding(.leading, CGFloat(min(indent, 4)) * 16))
+        case .code(let s):
+            return AnyView(Text(s).font(.system(.callout, design: .monospaced))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.12)).cornerRadius(8))
+        case .quote(let s):
+            return AnyView(HStack(spacing: 8) {
+                Rectangle().fill(Color.secondary.opacity(0.5)).frame(width: 3)
+                inline(s).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            })
+        case .rule:
+            return AnyView(Divider().padding(.vertical, 4))
+        case .table(let rows):
+            return AnyView(VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                            inline(cell).font(.callout).fontWeight(index == 0 ? .semibold : .regular)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                    if index < rows.count - 1 { Divider() }
+                }
+            }.padding(.horizontal, 10).background(Color.secondary.opacity(0.08)).cornerRadius(8))
+        }
+    }
+
+    /// **bold** / __bold__, *italic* / _italic_ and `code` within a line.
+    static func inline(_ s: String) -> Text {
+        let chars = Array(s)
+        var out = Text("")
+        var buffer = ""
+        var bold = false
+        var italic: Character? = nil
+        var i = 0
+
+        func flush() {
+            guard !buffer.isEmpty else { return }
+            var t = Text(buffer)
+            if bold { t = t.bold() }
+            if italic != nil { t = t.italic() }
+            out = out + t
+            buffer = ""
+        }
+        func closes(_ marker: [Character], from start: Int) -> Bool {
+            guard start < chars.count else { return false }
+            var j = start
+            while j + marker.count <= chars.count {
+                if Array(chars[j..<(j + marker.count)]) == marker { return j > start }
+                j += 1
+            }
+            return false
+        }
+
+        while i < chars.count {
+            let c = chars[i]
+            let next: Character = i + 1 < chars.count ? chars[i + 1] : " "
+            let prev: Character = i > 0 ? chars[i - 1] : " "
+            if c == "`", let end = chars[(i + 1)...].firstIndex(of: "`") {
+                flush()
+                out = out + Text(String(chars[(i + 1)..<end])).font(.system(.body, design: .monospaced))
+                i = end + 1
+                continue
+            }
+            if (c == "*" || c == "_"), next == c, bold || closes([c, c], from: i + 2) {
+                flush(); bold.toggle(); i += 2
+                continue
+            }
+            if c == "*" || c == "_" {
+                if let open = italic, open == c, !prev.isWhitespace {
+                    flush(); italic = nil; i += 1
+                    continue
+                }
+                if italic == nil, !next.isWhitespace, !(c == "_" && (prev.isLetter || prev.isNumber)),
+                   closes([c], from: i + 1) {
+                    flush(); italic = c; i += 1
+                    continue
+                }
+            }
+            buffer.append(c)
+            i += 1
+        }
+        flush()
+        return out
     }
 }
