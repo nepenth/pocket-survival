@@ -159,6 +159,8 @@ class LlamaState: ObservableObject {
     @Published var attachedImage: UIImage?
     /// Shown in place of "Thinking…" while a reply is being prepared.
     @Published var replyPhase: String?
+    /// When the current reply was asked for (the pending row shows the time since).
+    @Published var replyStarted: Date?
     private var piStream: ChatStream?
 
     /// True when replies will come from the Pi.
@@ -665,8 +667,10 @@ class LlamaState: ObservableObject {
         saveChat()
         Task {
             // Library first (from the Pi's book library and Kiwix), when the Pi is in reach.
+            replyStarted = Date()
             var sources: [SourceRef] = []
-            if useLibrary, !question.isEmpty {
+            // A photo already costs the Pi about 3 minutes to read, so photo questions skip the library.
+            if useLibrary, !question.isEmpty, userMessage.imageFile == nil {
                 if piStatus == nil { await refreshPi() }
                 if let status = piStatus {
                     replyPhase = "Looking in the library…"
@@ -730,7 +734,9 @@ class LlamaState: ObservableObject {
             }
         }
 
-        replyPhase = sources.isEmpty ? "The Pi is reading…" : "The Pi is reading \(sources.count) library passages…"
+        let hasPhoto = turns.last(where: { $0.role == .user })?.imageFile != nil && pi.vision
+        replyPhase = hasPhoto ? "The Pi is looking at the photo (about 3 minutes)…"
+            : sources.isEmpty ? "The Pi is reading…" : "The Pi is reading \(sources.count) library passages (about a minute)…"
         Diagnostics.mark("BEGIN Pi reply (\(systemText.count + turns.reduce(0) { $0 + $1.text.count }) chars, \(sources.count) sources)")
         let t0 = DispatchTime.now().uptimeNanoseconds
         var text = ""

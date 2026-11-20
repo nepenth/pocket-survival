@@ -218,6 +218,7 @@ private struct ChatTranscript: View {
                             message: message,
                             isPending: llamaState.isGenerating && message.id == llamaState.messages.last?.id && message.text.isEmpty,
                             phase: llamaState.replyPhase,
+                            started: llamaState.replyStarted,
                             imageURL: message.imageFile.map(llamaState.imageURL)
                         )
                     }
@@ -337,7 +338,9 @@ private struct MessageRow: View {
     let message: ChatMessage
     let isPending: Bool
     var phase: String? = nil
+    var started: Date? = nil
     var imageURL: URL? = nil
+    @State private var now = Date()
     @State private var openSource: SourceRef?
 
     var body: some View {
@@ -359,7 +362,14 @@ private struct MessageRow: View {
                     Text(phase ?? "Thinking…")
                         .font(.body)
                         .foregroundColor(.secondary)
+                    if let started {
+                        let s = max(0, Int(now.timeIntervalSince(started)))
+                        Text(String(format: "%d:%02d", s / 60, s % 60))
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                 }
+                .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
             } else if message.role == .assistant && !message.isNotice {
                 MarkdownText(text: message.text)
                     .font(.body)

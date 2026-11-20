@@ -266,9 +266,19 @@ enum KitPi {
         comps.queryItems = [URLQueryItem(name: "pattern", value: q), URLQueryItem(name: "format", value: "xml"),
                             URLQueryItem(name: "pageLength", value: "4")]
         guard let url = comps.url, let data = await get(url, timeout: 8) else { return [] }
-        return KiwixResults(data: data).items.prefix(3).map { item in
-            SourceRef(id: 0, title: item.title, detail: item.book, url: "http://\(host):8090\(item.link)", text: item.snippet)
+        var out: [SourceRef] = []
+        for item in KiwixResults(data: data).items.prefix(4) {
+            var source = SourceRef(id: 0, title: item.title, detail: item.book, url: "http://\(host):8090\(item.link)", text: item.snippet)
+            // Some archives (LibreTexts) are web apps that iOS 14's browser can't run: their article
+            // links are stubs that redirect into the app. Show those passages in the app instead.
+            if let page = URL(string: source.url), let body = await get(page, timeout: 4), body.count < 4000,
+               let html = String(data: body, encoding: .utf8), html.contains("http-equiv=\"refresh\""), html.contains("index.html#") {
+                source.url = ""
+                source.readText = item.snippet + "\n\n(This archive can't be opened on this phone; the passage above is what the assistant read.)"
+            }
+            out.append(source)
         }
+        return out
     }
 
     // MARK: Chat
