@@ -83,6 +83,23 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     var isNotice = false
 }
 
+/// One saved conversation, stored as Application Support/chats/<id>.json.
+struct SavedChat: Codable {
+    var id: UUID
+    var created: Date
+    var updated: Date
+    var messages: [ChatMessage]
+}
+
+/// What the chat list shows, without loading every conversation's messages.
+struct ChatSummary: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    let preview: String
+    let updated: Date
+    let count: Int
+}
+
 @MainActor
 class LlamaState: ObservableObject {
     /// Activity log (model loading, downloads, speed test); shown in Settings, not in the chat.
@@ -147,11 +164,25 @@ class LlamaState: ObservableObject {
         "How do I signal for rescue?",
     ]
 
-    private static let chatURL: URL = {
+    /// Before 1.3.0 there was only one chat, kept here; it becomes the first saved chat.
+    private static let legacyChatURL: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("chat.json")
     }()
+    private static let chatsDir: URL = {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("chats", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+    private static let currentChatKey = "currentChatID"
+
+    /// The conversation on screen; saved under this id once it has a message.
+    private var currentChatID = UUID()
+    private var currentChatCreated = Date()
+    /// Every saved conversation, newest first.
+    @Published var chats: [ChatSummary] = []
+    var currentChat: UUID { currentChatID }
 
     @Published var cacheCleared = false
     @Published var downloadedModels: [Model] = []
@@ -194,14 +225,107 @@ class LlamaState: ObservableObject {
     // MARK: Chat persistence (the app may be closed by iOS at any time; keep the instructions)
 
     private func restoreChat() {
-        guard let data = try? Data(contentsOf: Self.chatURL),
-              let saved = try? JSONDecoder().decode([ChatMessage].self, from: data) else { return }
-        messages = saved.filter { !$0.text.isEmpty }
+        migrateLegacyChat()
+        loadChatList()
+        if let raw = UserDefaults.standard.string(forKey: Self.currentChatKey), let id = UUID(uuidString: raw),
+           let saved = readChat(id) {
+            currentChatID = saved.id
+            currentChatCreated = saved.created
+            messages = saved.messages.filter { !$0.text.isEmpty }
+        }
+    }
+
+    private func chatURL(_ id: UUID) -> URL { Self.chatsDir.appendingPathComponent(id.uuidString + ".json") }
+
+    private func readChat(_ id: UUID) -> SavedChat? {
+        guard let data = try? Data(contentsOf: chatURL(id)) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(SavedChat.self, from: data)
+    }
+
+    private func migrateLegacyChat() {
+        let fm = FileManager.default
+        guard let data = try? Data(contentsOf: Self.legacyChatURL) else { return }
+        if let old = try? JSONDecoder().decode([ChatMessage].self, from: data), !old.isEmpty {
+            let modified = (try? fm.attributesOfItem(atPath: Self.legacyChatURL.path)[.modificationDate] as? Date) ?? Date()
+            let chat = SavedChat(id: UUID(), created: modified, updated: modified, messages: old)
+            write(chat)
+            UserDefaults.standard.set(chat.id.uuidString, forKey: Self.currentChatKey)
+        }
+        try? fm.removeItem(at: Self.legacyChatURL)
+    }
+
+    private func write(_ chat: SavedChat) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(chat) else { return }
+        try? data.write(to: chatURL(chat.id), options: .atomic)
+    }
+
+    private func summary(_ chat: SavedChat) -> ChatSummary? {
+        let real = chat.messages.filter { !$0.text.isEmpty && !$0.isNotice }
+        guard let first = real.first(where: { $0.role == .user }) else { return nil }
+        let title = first.text.replacingOccurrences(of: "\n", with: " ")
+        let last = real.last(where: { $0.role == .assistant })?.text ?? ""
+        let preview = last.replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "#", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        return ChatSummary(id: chat.id, title: String(title.prefix(80)), preview: String(preview.prefix(120)),
+                           updated: chat.updated, count: real.count)
+    }
+
+    private func loadChatList() {
+        let files = (try? FileManager.default.contentsOfDirectory(at: Self.chatsDir, includingPropertiesForKeys: nil)) ?? []
+        chats = files.compactMap { UUID(uuidString: $0.deletingPathExtension().lastPathComponent) }
+            .compactMap(readChat).compactMap(summary)
+            .sorted { $0.updated > $1.updated }
     }
 
     private func saveChat() {
-        guard let data = try? JSONEncoder().encode(messages.filter { !$0.text.isEmpty }) else { return }
-        try? data.write(to: Self.chatURL, options: .atomic)
+        let kept = messages.filter { !$0.text.isEmpty }
+        guard kept.contains(where: { $0.role == .user }) else { return }
+        let chat = SavedChat(id: currentChatID, created: currentChatCreated, updated: Date(), messages: kept)
+        write(chat)
+        UserDefaults.standard.set(currentChatID.uuidString, forKey: Self.currentChatKey)
+        if let s = summary(chat) {
+            chats.removeAll { $0.id == chat.id }
+            chats.insert(s, at: 0)
+        }
+    }
+
+    /// Switches to a saved conversation. The model re-reads the kept history on the next
+    /// message anyway, so nothing else has to change.
+    func openChat(_ id: UUID) {
+        guard !isGenerating, id != currentChatID, let saved = readChat(id) else { return }
+        saveChat()
+        currentChatID = saved.id
+        currentChatCreated = saved.created
+        messages = saved.messages.filter { !$0.text.isEmpty }
+        memoryStartID = nil
+        UserDefaults.standard.set(id.uuidString, forKey: Self.currentChatKey)
+        scrollTick += 1
+    }
+
+    func deleteChat(_ id: UUID) {
+        guard !(isGenerating && id == currentChatID) else { return }
+        try? FileManager.default.removeItem(at: chatURL(id))
+        chats.removeAll { $0.id == id }
+        if id == currentChatID { startNewChat() }
+    }
+
+    /// Words in a saved chat, for the chat list's search box.
+    func chatMatches(_ id: UUID, _ query: String) -> Bool {
+        guard let chat = readChat(id) else { return false }
+        return chat.messages.contains { $0.text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+    }
+
+    private func startNewChat() {
+        messages.removeAll()
+        memoryStartID = nil
+        currentChatID = UUID()
+        currentChatCreated = Date()
+        UserDefaults.standard.removeObject(forKey: Self.currentChatKey)
     }
 
     /// Free space for downloads, in bytes.
@@ -417,11 +541,11 @@ class LlamaState: ObservableObject {
         systemPrompt = defaultSystemPrompt
     }
 
+    /// Keeps the current conversation in the chat list and starts an empty one.
     func newChat() {
         guard !isGenerating else { return }
-        messages.removeAll()
-        memoryStartID = nil
         saveChat()
+        startNewChat()
     }
 
     func stopGenerating() {

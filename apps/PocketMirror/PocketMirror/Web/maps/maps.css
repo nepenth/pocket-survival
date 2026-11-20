@@ -80,5 +80,18 @@ body.map-page .leaflet-popup-content, body.map-page .coords { -webkit-user-selec
 }
 .guide[hidden] { display: none; }
 .guide #guideText { flex: 1; font-variant-numeric: tabular-nums; }
+.guide-btns { display: flex; flex-direction: column; gap: 6px; }
 .guide button { margin: 0; padding: 8px 12px; font-size: 15px; }
-.leaflet-popup-content .guide-btn { margin: 8px 0 0; padding: 8px 12px; font-size: 15px; width: 100%; }
+.guide button.quiet { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+.guide button[hidden] { display: none; }
+.go-row { display: flex; gap: 6px; margin-top: 8px; }
+.go-row .go-btn { flex: 1; margin: 0; padding: 8px 6px; font-size: 15px; white-space: nowrap; }
+.steps-panel {
+  position: absolute; z-index: 1200; left: 0; right: 0; bottom: 0; max-height: 60vh;
+  display: flex; flex-direction: column; background: var(--bg);
+  padding: 10px 12px max(12px, env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
+  border-radius: 16px 16px 0 0;
+}
+.steps-panel[hidden] { display: none; }
+.steps-panel .search-row { justify-content: space-between; }
+.search-results .step.next { background: var(--card); border-left: 4px solid var(--accent); }

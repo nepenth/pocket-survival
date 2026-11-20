@@ -39,6 +39,8 @@ final class MirrorModel: ObservableObject {
     }
 
     private let server = MirrorServer(port: MirrorModel.port)
+    /// Offline directions for the map (maps/routing.bin in the content folder).
+    private let routes = RouteService()
     private let kiwix = KiwixServer()
     /// KiwixServer isn't thread-safe; opening archives can take a moment, so keep it off the main thread.
     private let kiwixQueue = DispatchQueue(label: "mirror.kiwix")
@@ -54,6 +56,8 @@ final class MirrorModel: ObservableObject {
         server.onStateChange = { [weak self] state in
             DispatchQueue.main.async { self?.serverState = state }
         }
+        let routes = self.routes
+        server.api = { name, query in routes.handle(name, query) }
     }
 
     static var documentsURL: URL {
@@ -150,6 +154,7 @@ final class MirrorModel: ObservableObject {
         lanAddress = lanEnabled ? Self.wifiAddress().map { "http://\($0):\(Self.port)/" } : nil
         // Built-in pages first, so content (or an upload) can never replace them; uploads land
         // only in the content folder.
+        routes.setContentRoot(root)
         server.start(roots: [Self.webURL, root], uploadRoot: root, lan: lanEnabled)
         startLibrary(contentRoot: root)
     }

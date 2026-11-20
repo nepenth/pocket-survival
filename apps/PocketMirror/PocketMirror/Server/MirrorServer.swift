@@ -14,6 +14,10 @@ final class MirrorServer {
 
     let port: UInt16
     var onStateChange: ((State) -> Void)?
+    /// Answers GET /api/<name>?<query> (e.g. directions). Called off the network queue; returns
+    /// an HTTP status and a JSON body. Set before start().
+    var api: APIHandler?
+    typealias APIHandler = (_ name: String, _ query: [String: String]) -> (status: Int, json: Data)
 
     private let queue = DispatchQueue(label: "mirror.server.listener")
     private var listener: NWListener?
@@ -92,7 +96,7 @@ final class MirrorServer {
     }
 
     private func accept(_ connection: NWConnection) {
-        let client = ClientConnection(connection: connection, roots: roots, uploadRoot: uploadRoot, uploads: uploads)
+        let client = ClientConnection(connection: connection, roots: roots, uploadRoot: uploadRoot, uploads: uploads, api: api)
         let id = ObjectIdentifier(client)
         connections[id] = client
         client.onClose = { [weak self] in
@@ -118,6 +122,8 @@ private final class ClientConnection {
     private let roots: [URL]
     private let uploadRoot: URL?
     private let uploads: UploadGate
+    private let api: MirrorServer.APIHandler?
+    private static let apiQueue = DispatchQueue(label: "mirror.server.api")   // one search at a time
     private let queue = DispatchQueue(label: "mirror.server.connection")
     private var buffer = Data()
     private var closed = false
@@ -127,11 +133,12 @@ private final class ClientConnection {
     private static let maxHeadSize = 32 * 1024
     private static let headTerminator = Data("\r\n\r\n".utf8)
 
-    init(connection: NWConnection, roots: [URL], uploadRoot: URL?, uploads: UploadGate) {
+    init(connection: NWConnection, roots: [URL], uploadRoot: URL?, uploads: UploadGate, api: MirrorServer.APIHandler?) {
         self.connection = connection
         self.roots = roots
         self.uploadRoot = uploadRoot
         self.uploads = uploads
+        self.api = api
     }
 
     func start() {
@@ -200,6 +207,14 @@ private final class ClientConnection {
         let isHead = request.method == "HEAD"
         guard let path = request.path else {
             sendSimple(.badRequest, keepAlive: keepAlive)
+            return
+        }
+        if path.hasPrefix("/api/"), let api {
+            let name = String(path.dropFirst(5)), query = request.query
+            Self.apiQueue.async { [weak self] in
+                let (status, body) = api(name, query)
+                self?.queue.async { self?.sendJSON(status, body, keepAlive: keepAlive, head: isHead) }
+            }
             return
         }
         let candidates = roots.compactMap { HTTPCore.resolve(path: path, root: $0) }
@@ -456,6 +471,16 @@ private final class ClientConnection {
         headers.append(("Content-Length", String(body.count)))
         var data = HTTPCore.responseHead(status, headers: headers)
         data.append(body)
+        send(data) { [weak self] in self?.finishResponse(keepAlive: keepAlive) }
+    }
+
+    private func sendJSON(_ status: Int, _ body: Data, keepAlive: Bool, head: Bool) {
+        let code = HTTPStatus(rawValue: status) ?? .serverError
+        var headers = baseHeaders(keepAlive: keepAlive)
+        headers.append(("Content-Type", "application/json; charset=utf-8"))
+        headers.append(("Content-Length", String(body.count)))
+        var data = HTTPCore.responseHead(code, headers: headers)
+        if !head { data.append(body) }
         send(data) { [weak self] in self?.finishResponse(keepAlive: keepAlive) }
     }
 

@@ -4,6 +4,7 @@ struct ContentView: View {
     @StateObject var llamaState = LlamaState()
     @State private var draft = ""
     @State private var showingSettings = false
+    @State private var showingChats = false
 
     var body: some View {
         NavigationView {
@@ -31,6 +32,13 @@ struct ContentView: View {
                             .truncationMode(.middle)
                     }
                 }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: { showingChats = true }) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .imageScale(.large)
+                            .accessibility(label: Text("Chats"))
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button(action: llamaState.newChat) {
@@ -56,6 +64,10 @@ struct ContentView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView(llamaState: llamaState)
             }
+            // A second .sheet on the same view is ignored on iOS 14, so this one hangs off the transcript.
+            .background(EmptyView().sheet(isPresented: $showingChats) {
+                ChatListView(llamaState: llamaState)
+            })
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
@@ -215,6 +227,97 @@ private struct ChatTranscript: View {
                 proxy.scrollTo(bottomID, anchor: .bottom)
             }
         }
+    }
+}
+
+// MARK: - Saved chats
+
+private struct ChatListView: View {
+    @ObservedObject var llamaState: LlamaState
+    @Environment(\.presentationMode) private var presentationMode
+    @State private var query = ""
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        f.doesRelativeDateFormatting = true
+        return f
+    }()
+
+    private var shown: [ChatSummary] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return llamaState.chats }
+        return llamaState.chats.filter { llamaState.chatMatches($0.id, q) }
+    }
+
+    var body: some View {
+        NavigationView {
+            List {
+                Section {
+                    Button(action: {
+                        llamaState.newChat()
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        Label("New Chat", systemImage: "square.and.pencil")
+                    }
+                    .disabled(llamaState.isGenerating)
+                    HStack {
+                        Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                        TextField("Search chats", text: $query)
+                            .disableAutocorrection(true)
+                        if !query.isEmpty {
+                            Button(action: { query = "" }) {
+                                Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
+                    }
+                }
+                Section(header: Text(llamaState.chats.isEmpty ? "" : "Saved chats"),
+                        footer: Text(llamaState.chats.isEmpty
+                                     ? "Conversations are kept on this phone. They'll appear here."
+                                     : "Tap a chat to continue it. Swipe left to delete.")) {
+                    ForEach(shown) { chat in
+                        Button(action: {
+                            llamaState.openChat(chat.id)
+                            presentationMode.wrappedValue.dismiss()
+                        }) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text(chat.title).font(.headline).lineLimit(1)
+                                    if chat.id == llamaState.currentChat {
+                                        Spacer()
+                                        Text("Open").font(.caption).foregroundColor(.accentColor)
+                                    }
+                                }
+                                if !chat.preview.isEmpty {
+                                    Text(chat.preview).font(.subheadline).foregroundColor(.secondary).lineLimit(2)
+                                }
+                                Text("\(Self.dateFormatter.string(from: chat.updated)) · \(chat.count) messages")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .foregroundColor(.primary)
+                        .disabled(llamaState.isGenerating && chat.id != llamaState.currentChat)
+                    }
+                    .onDelete { offsets in
+                        let ids = offsets.map { shown[$0].id }
+                        ids.forEach(llamaState.deleteChat)
+                    }
+                }
+            }
+            .listStyle(InsetGroupedListStyle())
+            .navigationTitle("Chats")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { presentationMode.wrappedValue.dismiss() }
+                }
+            }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 

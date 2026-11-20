@@ -27,7 +27,15 @@
 
   <div class="guide" id="guide" hidden>
     <div id="guideText"></div>
-    <button id="guideStop" type="button">Stop</button>
+    <div class="guide-btns">
+      <button id="guideSteps" type="button">Steps</button>
+      <button id="guideStop" type="button" class="quiet">Stop</button>
+    </div>
+  </div>
+
+  <div class="steps-panel" id="stepsPanel" hidden>
+    <div class="search-row"><b>Directions</b><button id="stepsClose" type="button">Close</button></div>
+    <div id="stepsList" class="search-results"></div>
   </div>
 
   <div class="panel" id="panel">

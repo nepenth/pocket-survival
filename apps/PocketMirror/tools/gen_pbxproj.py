@@ -9,7 +9,7 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "PocketMirror.xcodeproj", "project.pbxproj")
 
-MARKETING_VERSION = "0.7.0"
+MARKETING_VERSION = "0.8.0"
 BUNDLE_ID = "net.pocketsurvival.mirror"
 
 # (file name, subgroup under PocketMirror/ or None)
@@ -20,6 +20,8 @@ SWIFT_FILES = [
     ("MirrorWebView.swift", None),
     ("HTTPCore.swift", "Server"),
     ("MirrorServer.swift", "Server"),
+    ("RouteGraph.swift", "Routing"),       # offline directions over maps/routing.bin
+    ("RouteService.swift", "Routing"),
     ("KiwixServer.mm", "Kiwix"),          # Objective-C++ bridge to libkiwix
 ]
 # Headers: listed in the project but not compiled on their own.

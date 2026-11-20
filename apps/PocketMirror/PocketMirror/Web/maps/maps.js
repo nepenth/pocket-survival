@@ -181,52 +181,174 @@
       L.popup().setLatLng(latlng).setContent(pointPopup(latlng, null, detail)).openOn(map);
     }
 
-    // Popup for a place or a pressed point, with a "Guide me" button.
-    var popupTarget = null;
+    // Popup for a place or a pressed point, with Walk / Drive / Line buttons.
+    // Walk and Drive ask the app's router (/api/route, over maps/routing.bin); Line is a compass
+    // bearing, for cross-country travel or when there's no routing file.
+    var popupTarget = null, routingReady = false;
+    fetch('/api/route?check=1').then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { routingReady = !!(d && d.ready); }).catch(function () {});
     function pointPopup(ll, name, detail) {
       popupTarget = { latlng: ll, name: name || formatLatLng(ll.lat, ll.lng).split('  ')[0] };
       return (name ? '<b>' + escapeHtml(name) + '</b><br>' : '<b>' + formatLatLng(ll.lat, ll.lng) + '</b><br>') +
         (detail ? escapeHtml(detail) + '<br>' : '') + (name ? formatLatLng(ll.lat, ll.lng) + '<br>' : '') +
-        '<button class="guide-btn" type="button">Guide me here</button>';
+        '<div class="go-row">' +
+        (routingReady ? '<button class="go-btn" type="button" data-mode="foot">🚶 Walk</button>' +
+                        '<button class="go-btn" type="button" data-mode="car">🚗 Drive</button>' : '') +
+        '<button class="go-btn" type="button" data-mode="line">🧭 ' + (routingReady ? 'Line' : 'Guide me here') + '</button></div>';
     }
-    // Leaflet stops clicks inside popups from reaching the map, so wire the button on open.
+    // Leaflet stops clicks inside popups from reaching the map, so wire the buttons on open.
     map.on('popupopen', function (e) {
-      var btn = e.popup.getElement() && e.popup.getElement().querySelector('.guide-btn');
-      var target = popupTarget;
-      if (btn) btn.addEventListener('click', function () { startGuide(target); map.closePopup(); });
+      var el = e.popup.getElement(), target = popupTarget;
+      if (!el) return;
+      Array.prototype.forEach.call(el.querySelectorAll('.go-btn'), function (btn) {
+        btn.addEventListener('click', function () { startGuide(target, btn.getAttribute('data-mode')); map.closePopup(); });
+      });
     });
 
-    // --- Guide: straight-line distance and bearing to a target, updated with each GPS fix ----
-    // Not road directions: a compass heading, like map-and-compass navigation.
-    var guide = null, guideLine = null, guideEl = document.getElementById('guide');
-    var guideText = document.getElementById('guideText');
+    // --- Guide: a route (walk/drive) or a straight line to the target, updated with each fix ---
+    var guide = null, guideLine = null, routeLine = null, guideEl = document.getElementById('guide');
+    var guideText = document.getElementById('guideText'), stepsBtn = document.getElementById('guideSteps');
+    var stepsPanel = document.getElementById('stepsPanel'), stepsList = document.getElementById('stepsList');
     // Magnetic declination for New England (WMM 2025, about ±1°): west, so a compass reads more.
     function declination(ll) { return -14 - 0.75 * (ll.lng + 71) - 0.3 * (ll.lat - 42.4); }
+    function durationText(s) {
+      var m = Math.max(1, Math.round(s / 60));
+      return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60 ? (m % 60) + ' min' : '');
+    }
+    function bearingLine(from, to) {
+      var trueB = bearingDeg(from, to), magB = (trueB - declination(from) + 360) % 360;
+      return distanceText(from.distanceTo(to)) + ' ' + compass(trueB) + ' · bearing ' + Math.round(trueB) + '° true, ' +
+        Math.round(magB) + '° on a compass';
+    }
+
+    function clearRoute() {
+      if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+      if (guideLine) { map.removeLayer(guideLine); guideLine = null; }
+    }
+
+    function fetchRoute(from) {
+      var g = guide;
+      g.fetching = true; g.lastFetch = Date.now();
+      var url = '/api/route?mode=' + g.mode + '&from=' + from.lat.toFixed(6) + ',' + from.lng.toFixed(6) +
+        '&to=' + g.latlng.lat.toFixed(6) + ',' + g.latlng.lng.toFixed(6);
+      fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+        if (guide !== g) return;
+        g.fetching = false;
+        if (d.error) { g.error = d.error; g.route = null; clearRoute(); updateGuide(); return; }
+        g.error = null;
+        var pts = d.coords.map(function (c) { return L.latLng(c[0], c[1]); });
+        // Cumulative distance along the route, and where each step starts on it.
+        var cum = [0];
+        for (var i = 1; i < pts.length; i++) cum.push(cum[i - 1] + pts[i - 1].distanceTo(pts[i]));
+        var k = 0;
+        d.steps.forEach(function (s) {
+          var ll = L.latLng(s.lat, s.lon), best = Infinity;
+          for (var j = k; j < pts.length; j++) {
+            var dist = pts[j].distanceTo(ll);
+            if (dist < best) { best = dist; s.index = j; }
+            if (dist > best + 2000) break;
+          }
+          k = s.index || k;
+        });
+        g.route = { pts: pts, cum: cum, total: cum[cum.length - 1], seconds: d.seconds, steps: d.steps };
+        clearRoute();
+        routeLine = L.polyline(pts, { color: g.mode === 'car' ? '#2f7fe0' : '#7a3fd1', weight: 6, opacity: 0.85, interactive: false }).addTo(map);
+        if (g.fitPending) {
+          g.fitPending = false;
+          if (follow) { follow = false; setButton(); }
+          map.stop(); map.fitBounds(routeLine.getBounds().pad(0.15), { maxZoom: 16, animate: false });
+        }
+        renderSteps();
+        updateGuide();
+      }).catch(function () {
+        if (guide !== g) return;
+        g.fetching = false; g.error = 'Directions failed. Is Pocket Mirror up to date?'; updateGuide();
+      });
+    }
+
+    // Where we are along the route: nearest segment, metres along, metres off.
+    function progress(r, here) {
+      var kx = Math.cos(here.lat * Math.PI / 180) * 111320, ky = 110574, best = null;
+      for (var i = 0; i < r.pts.length - 1; i++) {
+        var a = r.pts[i], b = r.pts[i + 1];
+        var ax = (a.lng - here.lng) * kx, ay = (a.lat - here.lat) * ky, bx = (b.lng - here.lng) * kx, by = (b.lat - here.lat) * ky;
+        var dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+        var t = l2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+        var qx = ax + t * dx, qy = ay + t * dy, off = Math.sqrt(qx * qx + qy * qy);
+        if (!best || off < best.off) best = { i: i, off: off, along: r.cum[i] + t * (r.cum[i + 1] - r.cum[i]) };
+      }
+      return best;
+    }
+
     function updateGuide() {
       if (!guide) return;
-      if (!lastFix) { guideText.textContent = 'To ' + guide.name + ': waiting for GPS…'; return; }
-      var from = lastFix.latlng, to = guide.latlng, meters = from.distanceTo(to);
-      var trueB = bearingDeg(from, to), magB = (trueB - declination(from) + 360) % 360;
-      if (guide.fitPending) {   // first fix after "Guide me": show both ends
-        guide.fitPending = false;
-        if (follow) { follow = false; setButton(); }
-        map.fitBounds(L.latLngBounds([from, to]).pad(0.2), { maxZoom: 15 });
+      var g = guide, head = '<b>' + escapeHtml(g.name) + '</b><br>';
+      if (!lastFix) { guideText.innerHTML = head + 'Waiting for GPS…'; return; }
+      var here = lastFix.latlng;
+      if (g.mode === 'line') {
+        if (g.fitPending) {
+          g.fitPending = false;
+          if (follow) { follow = false; setButton(); }
+          map.stop(); map.fitBounds(L.latLngBounds([here, g.latlng]).pad(0.2), { maxZoom: 15, animate: false });
+        }
+        if (guideLine) guideLine.setLatLngs([here, g.latlng]);
+        else guideLine = L.polyline([here, g.latlng], { color: '#e8822e', weight: 4, dashArray: '8 8', interactive: false }).addTo(map);
+        guideText.innerHTML = head + bearingLine(here, g.latlng) +
+          (here.distanceTo(g.latlng) < Math.max(30, lastFix.accuracy) ? '<br>You are there.' : '');
+        return;
       }
-      if (guideLine) guideLine.setLatLngs([from, to]);
-      else guideLine = L.polyline([from, to], { color: '#e8822e', weight: 4, dashArray: '8 8', interactive: false }).addTo(map);
-      guideText.innerHTML = '<b>' + escapeHtml(guide.name) + '</b><br>' + distanceText(meters) + ' ' + compass(trueB) +
-        ' · bearing ' + Math.round(trueB) + '° true, ' + Math.round(magB) + '° on a compass' +
-        (meters < Math.max(30, lastFix.accuracy) ? '<br>You are there.' : '');
+      if (!g.route && !g.fetching && !g.error) fetchRoute(here);
+      if (g.error) { guideText.innerHTML = head + escapeHtml(g.error) + '<br>' + bearingLine(here, g.latlng); return; }
+      if (!g.route) { guideText.innerHTML = head + 'Finding the ' + (g.mode === 'car' ? 'driving' : 'walking') + ' route…'; return; }
+      var r = g.route, p = progress(r, here), left = Math.max(0, r.total - p.along);
+      // Off the route by more than GPS error: work out a new one (at most every 20 s).
+      if (p.off > Math.max(60, lastFix.accuracy * 1.5) && !g.fetching && Date.now() - g.lastFetch > 20000) fetchRoute(here);
+      var next = null;
+      for (var i = 0; i < r.steps.length; i++) if (r.steps[i].index > p.i + 1) { next = r.steps[i]; break; }
+      var nextText = next ? 'Next: ' + escapeHtml(next.text) + ' in ' + distanceText(Math.max(0, r.cum[next.index] - p.along))
+        : 'Then the destination';
+      if (left < Math.max(30, lastFix.accuracy)) nextText = 'You are there.';
+      guideText.innerHTML = head + distanceText(left) + ' · ' + durationText(r.seconds * left / Math.max(r.total, 1)) +
+        (g.mode === 'car' ? ' drive' : ' walk') + (p.off > 60 ? ' · off route, rerouting…' : '') + '<br>' + nextText;
+      highlightStep(next);
     }
-    function startGuide(t) {
-      guide = { latlng: t.latlng, name: t.name, fitPending: true };
+
+    function renderSteps() {
+      var r = guide && guide.route;
+      if (!r) { stepsList.innerHTML = ''; return; }
+      stepsList.innerHTML = r.steps.map(function (s, i) {
+        return '<div class="hit step" data-i="' + i + '"><b>' + escapeHtml(s.text) + '</b><span>' + distanceText(s.meters) + '</span></div>';
+      }).join('') + '<div class="hint">' + distanceText(r.total) + ' in all, about ' + durationText(r.seconds) +
+        '. Routes come from OpenStreetMap: check trail conditions, closures and the ground in front of you.</div>';
+    }
+    function highlightStep(next) {
+      Array.prototype.forEach.call(stepsList.querySelectorAll('.step'), function (el) {
+        el.classList.toggle('next', !!next && guide.route.steps[+el.getAttribute('data-i')] === next);
+      });
+    }
+    stepsList.addEventListener('click', function (ev) {
+      var el = ev.target.closest ? ev.target.closest('.step') : null;
+      if (!el || !guide || !guide.route) return;
+      var s = guide.route.steps[+el.getAttribute('data-i')];
+      stepsPanel.hidden = true;
+      if (follow) { follow = false; setButton(); }
+      map.setView([s.lat, s.lon], Math.max(map.getZoom(), 16));
+    });
+    stepsBtn.addEventListener('click', function () { stepsPanel.hidden = !stepsPanel.hidden; });
+    document.getElementById('stepsClose').addEventListener('click', function () { stepsPanel.hidden = true; });
+
+    function startGuide(t, mode) {
+      guide = { latlng: t.latlng, name: t.name, mode: mode || 'line', fitPending: true, route: null, lastFetch: 0 };
+      clearRoute();
+      stepsBtn.hidden = guide.mode === 'line';
+      stepsPanel.hidden = true; stepsList.innerHTML = '';
       guideEl.hidden = false;
       if (watchId === null) locateBtn.click();   // guiding needs the GPS
       updateGuide();
     }
     document.getElementById('guideStop').addEventListener('click', function () {
-      guide = null; guideEl.hidden = true;
-      if (guideLine) { map.removeLayer(guideLine); guideLine = null; }
+      guide = null; guideEl.hidden = true; stepsPanel.hidden = true;
+      clearRoute();
     });
 
     function bearingDeg(a, b) {

@@ -5,7 +5,7 @@
    Written for Safari 14: no syntax newer than ES2019. */
 (function () {
   'use strict';
-  var shelf = document.getElementById('shelf'), q = document.getElementById('q');
+  var shelf = document.getElementById('shelf'), q = document.getElementById('q'), scope = document.getElementById('scope');
   var sub = document.getElementById('sub'), recentEl = document.getElementById('recent');
   var RECENT_KEY = 'pocketMirror.recentBooks', data = null, byId = {};
   var textEl = document.createElement('div'), pages = null, loadingText = null;
@@ -31,6 +31,26 @@
       (where ? '<span>' + esc(where) + '</span>' : '') + '<small>' + meta(it) + '</small></div></a>';
   }
 
+  // Scope: '' (all), 'c<n>' (a book split into chapters: collection n), 'f<id>' (one PDF).
+  function inScope(c, it) {
+    var v = scope.value;
+    return !v || v === 'c' + c.index || v === 'f' + it.id;
+  }
+  function fillScope() {
+    data.collections.forEach(function (c, n) {
+      c.index = n;
+      if (c.chapters) {
+        var o = document.createElement('option'); o.value = 'c' + n; o.textContent = c.title; scope.appendChild(o);
+        return;
+      }
+      var g = document.createElement('optgroup'); g.label = c.title;
+      c.items.forEach(function (it) {
+        var o = document.createElement('option'); o.value = 'f' + it.id; o.textContent = it.title; g.appendChild(o);
+      });
+      scope.appendChild(g);
+    });
+  }
+
   function render() {
     var fq = fold(q.value.trim()), html = '';
     if (!fq) {
@@ -39,9 +59,12 @@
         return row(r, r.where);
       }).join('') + '</div>' : '';
     } else recentEl.innerHTML = '';
+    if (scope.value) recentEl.innerHTML = '';
     data.collections.forEach(function (c) {
       var hitCollection = fq && fold(c.title + ' ' + c.about).indexOf(fq) >= 0;
-      var items = c.items.filter(function (it) { return !fq || hitCollection || fold(it.title).indexOf(fq) >= 0; });
+      var items = c.items.filter(function (it) {
+        return inScope(c, it) && (!fq || hitCollection || fold(it.title).indexOf(fq) >= 0);
+      });
       if (!items.length) return;
       if (!c.chapters) {
         html += '<h2>' + esc(c.title) + '</h2>' + (c.about ? '<p class="about">' + esc(c.about) + '</p>' : '') +
@@ -50,8 +73,9 @@
       }
       var pages = c.items.reduce(function (t, it) { return t + (it.pages || 0); }, 0);
       html += '<h2>' + esc(c.title) + '</h2>' + (c.about ? '<p class="about">' + esc(c.about) + '</p>' : '') +
-        '<details class="list book"' + (fq ? ' open' : '') + '><summary class="item"><span class="ph">📕</span><div><b>' +
+        '<details class="list book"' + (fq || scope.value ? ' open' : '') + '><summary class="item"><span class="ph">📕</span><div><b>' +
         c.items.length + ' chapters</b><small>' + pages + ' pages · tap for the chapter list</small></div></summary>' +
+        (scope.value ? '' : '<a class="item tool" href="#" data-scope="c' + c.index + '"><span class="ph">🔍</span><div><b>Search this book</b></div></a>') +
         items.map(function (it) { return row(it, c.title); }).join('') + '</details>';
     });
     shelf.innerHTML = html || (fq.length >= 3 ? '' : '<p class="sub">No book or chapter matches “' + esc(q.value) + '”.</p>');
@@ -77,21 +101,23 @@
   function searchText(fq) {
     if (fq.length < 3) { textEl.innerHTML = ''; return; }
     if (!pages) {
-      textEl.innerHTML = '<h2>Inside the books</h2><p class="sub">Searching the pages…</p>';
+      textEl.innerHTML = '<h2>Inside ' + (scope.value ? 'this book' : 'the books') + '</h2><p class="sub">Searching the pages…</p>';
       loadText().then(function () { if (fold(q.value.trim()) === fq) searchText(fq); });
       return;
     }
     var hits = [];
     for (var i = 0; i < pages.length; i++) {
-      var p = pages[i], at = p.folded.indexOf(fq);
+      var p = pages[i];
+      if (scope.value && !inScope(byId[p.id].c, byId[p.id])) continue;
+      var at = p.folded.indexOf(fq);
       if (at < 0) continue;
       var n = 0;
       for (var k = at; k >= 0 && n < 20; k = p.folded.indexOf(fq, k + fq.length)) n++;
       hits.push({ p: p, n: n });
     }
     hits.sort(function (a, b) { return b.n - a.n; });
-    if (!hits.length) { textEl.innerHTML = '<h2>Inside the books</h2><p class="sub">“' + esc(q.value.trim()) + '” isn\'t in any page.</p>'; return; }
-    textEl.innerHTML = '<h2>Inside the books</h2><p class="sub">' + hits.length + (hits.length === 1 ? ' page' : ' pages') +
+    if (!hits.length) { textEl.innerHTML = '<h2>Inside ' + (scope.value ? 'this book' : 'the books') + '</h2><p class="sub">“' + esc(q.value.trim()) + '” isn\'t on any page' + (scope.value ? ' of this book' : '') + '.</p>'; return; }
+    textEl.innerHTML = '<h2>Inside ' + (scope.value ? 'this book' : 'the books') + '</h2><p class="sub">' + hits.length + (hits.length === 1 ? ' page' : ' pages') +
       (hits.length > 40 ? ', the 40 that mention it most' : '') + '</p><div class="list">' +
       hits.slice(0, 40).map(function (h) {
         var it = byId[h.p.id];
@@ -104,6 +130,12 @@
 
   document.addEventListener('click', function (ev) {
     var a = ev.target.closest ? ev.target.closest('a.item') : null;
+    if (a && a.getAttribute('data-scope')) {
+      ev.preventDefault();
+      scope.value = a.getAttribute('data-scope');
+      render(); window.scrollTo(0, 0); q.focus();
+      return;
+    }
     if (a && a.getAttribute('data-file')) {
       remember({ file: a.getAttribute('data-file'), title: a.getAttribute('data-title'), where: a.getAttribute('data-where'),
                  pages: 0, bytes: 0 });
@@ -121,7 +153,9 @@
     return r.json();
   }).then(function (d) {
     data = d;
-    d.collections.forEach(function (c) { c.items.forEach(function (it) { it.collection = c.title; byId[it.id] = it; }); });
+    d.collections.forEach(function (c) { c.items.forEach(function (it) { it.collection = c.title; it.c = c; byId[it.id] = it; }); });
+    fillScope();
+    scope.addEventListener('change', function () { render(); window.scrollTo(0, 0); });
     try { localStorage.setItem(RECENT_KEY, JSON.stringify(loadRecent().map(withMeta).filter(Boolean))); } catch (e) {}
     var files = d.collections.reduce(function (t, c) { return t + c.items.length; }, 0);
     var books = d.collections.reduce(function (t, c) { return t + (c.chapters ? 1 : c.items.length); }, 0);

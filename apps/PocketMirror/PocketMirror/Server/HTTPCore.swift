@@ -16,6 +16,20 @@ struct HTTPRequest {
         return decoded
     }
 
+    /// Decoded query parameters ("a=1&b=x%20y" -> ["a": "1", "b": "x y"]).
+    var query: [String: String] {
+        let parts = target.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return [:] }
+        var out: [String: String] = [:]
+        for pair in parts[1].split(separator: "&") {
+            let kv = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            let key = String(kv[0]).replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? ""
+            let value = kv.count > 1 ? (String(kv[1]).replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? "") : ""
+            out[key] = value
+        }
+        return out
+    }
+
     var wantsClose: Bool {
         headers["connection"]?.lowercased().contains("close") == true
     }
@@ -70,7 +84,7 @@ enum ByteRange: Equatable {
 
 enum HTTPStatus: Int {
     case ok = 200, created = 201, partialContent = 206, movedPermanently = 301, notModified = 304, badRequest = 400, forbidden = 403,
-         notFound = 404, methodNotAllowed = 405, lengthRequired = 411, rangeNotSatisfiable = 416,
+         notFound = 404, methodNotAllowed = 405, lengthRequired = 411, rangeNotSatisfiable = 416, unprocessable = 422,
          serverError = 500, insufficientStorage = 507
 
     var reason: String {
@@ -85,6 +99,7 @@ enum HTTPStatus: Int {
         case .notFound: return "Not Found"
         case .methodNotAllowed: return "Method Not Allowed"
         case .lengthRequired: return "Length Required"
+        case .unprocessable: return "Unprocessable Content"
         case .rangeNotSatisfiable: return "Range Not Satisfiable"
         case .serverError: return "Internal Server Error"
         case .insufficientStorage: return "Insufficient Storage"
