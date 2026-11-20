@@ -33,7 +33,7 @@ actor LlamaContext {
     /// This variable is used to store temporarily invalid cchars
     private var temporary_invalid_cchars: [CChar]
 
-    var n_len: Int32 = 1024
+    var n_len: Int32 = 2048   // prompt + reply must fit the context
     var n_cur: Int32 = 0
 
     var n_decode: Int32 = 0
@@ -83,7 +83,7 @@ actor LlamaContext {
         print("Using \(n_threads) threads")
 
         var ctx_params = llama_context_default_params()
-        ctx_params.n_ctx = 1024  // reduced from 2048 to lower KV cache memory on iPad
+        ctx_params.n_ctx = 2048  // room for library passages + history (~1500) and a reply (~500)
         ctx_params.n_threads       = Int32(n_threads)
         ctx_params.n_threads_batch = Int32(n_threads)
 
@@ -140,19 +140,24 @@ actor LlamaContext {
             print(String(cString: token_to_piece(token: id) + [0]))
         }
 
-        llama_batch_clear(&batch)
-
-        for i1 in 0..<tokens_list.count {
-            let i = Int(i1)
-            llama_batch_add(&batch, tokens_list[i], Int32(i), [0], false)
+        // The batch holds 512 tokens, so longer prompts are read in chunks.
+        let chunk = 512
+        var start = 0
+        while start < tokens_list.count {
+            let end = min(start + chunk, tokens_list.count)
+            llama_batch_clear(&batch)
+            for i in start..<end {
+                llama_batch_add(&batch, tokens_list[i], Int32(i), [0], false)
+            }
+            if end == tokens_list.count { batch.logits[Int(batch.n_tokens) - 1] = 1 }
+            if llama_decode(context, batch) != 0 {
+                print("llama_decode() failed")
+                break
+            }
+            start = end
         }
-        batch.logits[Int(batch.n_tokens) - 1] = 1 // true
 
-        if llama_decode(context, batch) != 0 {
-            print("llama_decode() failed")
-        }
-
-        n_cur = batch.n_tokens
+        n_cur = Int32(tokens_list.count)
     }
 
     func completion_loop() -> String {

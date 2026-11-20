@@ -81,6 +81,12 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     var text: String
     /// App-generated notice shown in the chat but never sent to the model.
     var isNotice = false
+    /// A photo sent with this message (file name in the chats folder's images/).
+    var imageFile: String? = nil
+    /// Library passages the reply was given (shown under it, tappable).
+    var sources: [SourceRef]? = nil
+    /// Where the reply was written, e.g. "Gemma 3 4B on the Pi".
+    var answeredBy: String? = nil
 }
 
 /// One saved conversation, stored as Application Support/chats/<id>.json.
@@ -123,10 +129,45 @@ class LlamaState: ObservableObject {
     }
     private var stopRequested = false
 
-    /// Hard ceiling for the formatted prompt. LibLlama's batch holds 512 tokens and the context
-    /// 1024; staying well below 512 avoids a batch overflow and keeps prompt processing short on
-    /// an A13 CPU (the whole remembered history is re-read every turn), leaving ~570+ tokens to reply.
-    private let promptTokenBudget = 448
+    /// Hard ceiling for the formatted prompt on the phone. The context holds 2048 tokens; this
+    /// leaves ~500 for the reply. Library passages and the remembered history share it. The A13
+    /// reads about 50-100 tokens a second, so a full prompt means ~15-30 s before the first word:
+    /// accepted, because a grounded answer matters more than a fast one.
+    private let promptTokenBudget = 1536
+    /// Of that, the most the library passages may take (characters; ~4 per token).
+    private let phoneSourceChars = 2600
+
+    // MARK: Kit Pi (bigger models, photos, the full library) over its Wi-Fi
+    private static let piHostKey = "piHost", usePiKey = "usePi", useLibraryKey = "useLibrary", booksKeyKey = "piBooksKey"
+    /// Address of the kit's Pi; "survivalpi" works on its hotspot (every name resolves to it).
+    @Published var piHost: String = UserDefaults.standard.string(forKey: LlamaState.piHostKey) ?? KitPi.defaultHost {
+        didSet { UserDefaults.standard.set(piHost, forKey: Self.piHostKey) }
+    }
+    /// Answer with the Pi's model whenever the Pi is reachable (on by default).
+    @Published var usePi: Bool = UserDefaults.standard.object(forKey: LlamaState.usePiKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(usePi, forKey: Self.usePiKey) }
+    }
+    /// Look the question up in the kit's library first and give the passages to the model.
+    @Published var useLibrary: Bool = UserDefaults.standard.object(forKey: LlamaState.useLibraryKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(useLibrary, forKey: Self.useLibraryKey) }
+    }
+    /// Access key for the Pi's book library (Lastbook's derived/lan-key), or its access link.
+    @Published var piBooksKey: String = UserDefaults.standard.string(forKey: LlamaState.booksKeyKey) ?? "" {
+        didSet { UserDefaults.standard.set(KitPi.normalizedKey(piBooksKey), forKey: Self.booksKeyKey) }
+    }
+    @Published var piStatus: KitPiStatus?
+    @Published var piChecking = false
+    @Published var piSwapping: String?
+    @Published var piNote: String?
+    /// Photo waiting to go with the next message (Pi vision models only).
+    @Published var attachedImage: UIImage?
+    /// Shown in place of "Thinking…" while a reply is being prepared.
+    @Published var replyPhase: String?
+    private var piStream: ChatStream?
+
+    /// True when replies will come from the Pi.
+    var piActive: Bool { usePi && piStatus != nil }
+    var canSendPhotos: Bool { piActive && (piStatus?.vision ?? false) }
     /// Streamed text is applied to the UI at most this often, so long replies don't re-render per token.
     private let streamFlushInterval: UInt64 = 80_000_000 // ns
     private static let systemPromptKey = "customSystemPrompt"
@@ -509,7 +550,9 @@ class LlamaState: ObservableObject {
 
     // MARK: - Chat
 
-    var hasModel: Bool { llamaContext != nil }
+    /// Something can answer: a model on the phone, or the Pi.
+    var hasModel: Bool { llamaContext != nil || piActive }
+    var hasLocalModel: Bool { llamaContext != nil }
 
     var defaultSystemPrompt: String {
         if loadedModelName?.lowercased().contains("atlas") == true {
@@ -550,15 +593,72 @@ class LlamaState: ObservableObject {
 
     func stopGenerating() {
         stopRequested = true
+        piStream?.cancel()
+    }
+
+    // MARK: Kit Pi
+
+    func refreshPi() async {
+        guard !piChecking, piSwapping == nil else { return }
+        piChecking = true
+        let status = await KitPi.probe(piHost, booksKey: KitPi.normalizedKey(piBooksKey))
+        piChecking = false
+        if status != piStatus { piStatus = status }
+    }
+
+    /// Switches the Pi's model through its dashboard, then waits for it to come back.
+    func swapPiModel(_ file: String) async {
+        guard let host = piStatus?.ip, piSwapping == nil, !isGenerating else { return }
+        piSwapping = KitPi.displayName(file)
+        piNote = nil
+        if let problem = await KitPi.swapModel(host: host, to: file) {
+            piNote = problem
+        } else {
+            for _ in 0..<60 {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if await KitPi.ready(host: host) { break }
+            }
+        }
+        piSwapping = nil
+        await refreshPi()
+    }
+
+    private static let imagesDir: URL = {
+        let dir = LlamaState.chatsDir.appendingPathComponent("images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    func imageURL(_ name: String) -> URL { Self.imagesDir.appendingPathComponent(name) }
+
+    private func saveImage(_ image: UIImage) -> String? {
+        let name = UUID().uuidString + ".jpg"
+        guard let data = image.jpegData(compressionQuality: 0.85) else { return nil }
+        try? data.write(to: imageURL(name), options: .atomic)
+        return name
+    }
+
+    /// The library passages as the model sees them.
+    private static func sourcesBlock(_ sources: [SourceRef]) -> String {
+        guard !sources.isEmpty else { return "" }
+        return "\n\nReference passages from the kit's offline library. Use them when they answer the question and cite them like [1]. "
+            + "If they don't cover it, answer from your own knowledge and say the library didn't cover it.\n"
+            + sources.map { "[\($0.id)] \($0.title) (\($0.detail)): \($0.text)" }.joined(separator: "\n")
     }
 
     func send(_ text: String) {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty, !isGenerating, let llamaContext else { return }
+        let image = canSendPhotos ? attachedImage : nil
+        guard !question.isEmpty || image != nil, !isGenerating else { return }
+        let pi = piActive ? piStatus : nil
+        guard pi != nil || llamaContext != nil else { return }
 
         isGenerating = true
         stopRequested = false
-        messages.append(ChatMessage(role: .user, text: question))
+        var userMessage = ChatMessage(role: .user, text: question.isEmpty ? "What is in this photo?" : question)
+        if let image { userMessage.imageFile = saveImage(image) }
+        attachedImage = nil
+        messages.append(userMessage)
         let history = messages.filter { !$0.text.isEmpty && !$0.isNotice }
         let reply = ChatMessage(role: .assistant, text: "")
         messages.append(reply)
@@ -568,8 +668,121 @@ class LlamaState: ObservableObject {
         if briefAnswers { system += (system.isEmpty ? "" : " ") + "Keep answers short." }
         saveChat()
         Task {
-            await generateReply(context: llamaContext, system: system, history: history, replyID: reply.id)
+            // Library first (from the Pi's book library and Kiwix), when the Pi is in reach.
+            var sources: [SourceRef] = []
+            if useLibrary, !question.isEmpty {
+                if piStatus == nil { await refreshPi() }
+                if let status = piStatus {
+                    replyPhase = "Looking in the library…"
+                    sources = await KitPi.lookUp(question, pi: status, booksKey: KitPi.normalizedKey(piBooksKey),
+                                                 maxChars: pi != nil ? 5000 : phoneSourceChars)
+                    if let i = messages.firstIndex(where: { $0.id == reply.id }), !sources.isEmpty { messages[i].sources = sources }
+                }
+            }
+            if stopRequested {
+                finishStopped(reply.id)
+                return
+            }
+            if let pi {
+                let ok = await generatePiReply(pi, system: system, sources: sources, history: history, replyID: reply.id)
+                if ok || stopRequested || llamaContext == nil { return }
+                // The Pi went away mid-question: answer on the phone instead.
+                piStatus = nil
+                isGenerating = true
+                setReply(reply.id, "")
+            }
+            if let llamaContext {
+                await generateReply(context: llamaContext, system: system, sources: sources, history: history, replyID: reply.id)
+            }
         }
+    }
+
+    private func finishStopped(_ id: UUID) {
+        setReply(id, "(Stopped)")
+        replyPhase = nil
+        isGenerating = false
+        saveChat()
+    }
+
+    /// Streams the answer from the Pi. Returns false if the Pi couldn't be reached at all.
+    private func generatePiReply(_ pi: KitPiStatus, system: String, sources: [SourceRef], history: [ChatMessage], replyID: UUID) async -> Bool {
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = false }
+        let by = "\(pi.modelName) on the Pi"
+        if let i = messages.firstIndex(where: { $0.id == replyID }) { messages[i].answeredBy = by }
+
+        // Recent history that fits the Pi's context (about 3.5 characters a token), newest last.
+        let systemText = system + Self.sourcesBlock(sources)
+        var budget = max(2000, (pi.contextTokens - 1024) * 3) - systemText.count
+        var turns: [ChatMessage] = []
+        for m in history.reversed() {
+            if !turns.isEmpty && budget - m.text.count < 0 { break }
+            budget -= m.text.count
+            turns.insert(m, at: 0)
+        }
+        while let first = turns.first, first.role != .user { turns.removeFirst() }
+        memoryStartID = turns.first?.id
+        let newestUser = turns.last(where: { $0.role == .user })?.id
+        var payload: [[String: Any]] = []
+        if !systemText.isEmpty { payload.append(["role": "system", "content": systemText]) }
+        for m in turns {
+            if m.id == newestUser, let file = m.imageFile, pi.vision,
+               let img = UIImage(contentsOfFile: imageURL(file).path), let url = KitPi.imageDataURL(img) {
+                payload.append(["role": "user", "content": [["type": "text", "text": m.text],
+                                                            ["type": "image_url", "image_url": ["url": url]]]])
+            } else {
+                payload.append(["role": m.role.rawValue, "content": m.text])
+            }
+        }
+
+        replyPhase = sources.isEmpty ? "The Pi is reading…" : "The Pi is reading \(sources.count) library passages…"
+        Diagnostics.mark("BEGIN Pi reply (\(systemText.count + turns.reduce(0) { $0 + $1.text.count }) chars, \(sources.count) sources)")
+        let t0 = DispatchTime.now().uptimeNanoseconds
+        var text = ""
+        var firstAt: UInt64?
+        var lastFlush: UInt64 = 0
+        let result: (Error?, [String: Any]?) = await withCheckedContinuation { cont in
+            piStream = KitPi.chat(host: pi.ip, messages: payload, maxTokens: briefAnswers ? briefReplyTokenCap : nil,
+                onText: { [weak self] piece in
+                    guard let self else { return }
+                    let now = DispatchTime.now().uptimeNanoseconds
+                    if firstAt == nil { firstAt = now; self.replyPhase = nil }
+                    text += piece
+                    if now - lastFlush >= self.streamFlushInterval {
+                        lastFlush = now
+                        self.setReply(replyID, Self.visibleText(text))
+                    }
+                },
+                onDone: { error, timings in cont.resume(returning: (error, timings)) })
+            if piStream == nil { cont.resume(returning: (NSError(domain: "KitPi", code: 2), nil)) }
+        }
+        piStream = nil
+        replyPhase = nil
+        let (error, timings) = result
+        if let error, !stopRequested, text.isEmpty {
+            let reached = (error as NSError).domain == "KitPi"
+            Diagnostics.mark("Pi reply failed: \(error.localizedDescription)")
+            if !reached && llamaContext != nil { return false }
+            setReply(replyID, "The Pi didn't answer: \(error.localizedDescription)")
+            if let i = messages.firstIndex(where: { $0.id == replyID }) { messages[i].isNotice = true }
+            isGenerating = false
+            saveChat()
+            return true
+        }
+        var finalText = Self.visibleText(text)
+        if stopRequested { finalText += finalText.isEmpty ? "(Stopped)" : " …(stopped)" }
+        setReply(replyID, finalText)
+        let secondsToFirst = Double((firstAt ?? DispatchTime.now().uptimeNanoseconds) - t0) / NS_PER_S
+        if let tps = timings?["predicted_per_second"] as? Double {
+            lastStats = String(format: "Pi: %.1f tok/s, first word after %.1f s", tps, secondsToFirst)
+        } else {
+            lastStats = String(format: "Pi: first word after %.1f s", secondsToFirst)
+        }
+        Diagnostics.mark("END Pi reply (\(lastStats ?? ""))")
+        isGenerating = false
+        scrollTick += 1
+        saveChat()
+        return true
     }
 
     /// Picks the longest run of recent messages that fits the token budget, always starting
@@ -598,7 +811,7 @@ class LlamaState: ObservableObject {
         return (best, history[start].id)
     }
 
-    private func generateReply(context: LlamaContext, system: String, history: [ChatMessage], replyID: UUID) async {
+    private func generateReply(context: LlamaContext, system: String, sources: [SourceRef] = [], history: [ChatMessage], replyID: UUID) async {
         // If the screen locks mid-reply iOS suspends the app and GPU work is not allowed in the
         // background, so keep the screen on while a reply is being written.
         UIApplication.shared.isIdleTimerDisabled = true
@@ -609,7 +822,20 @@ class LlamaState: ObservableObject {
             saveChat()
         }
 
-        guard let built = await buildPrompt(context: context, system: system, history: history) else {
+        if let i = messages.firstIndex(where: { $0.id == replyID }) { messages[i].answeredBy = loadedModelName.map { "\($0) on this phone" } }
+        replyPhase = sources.isEmpty ? nil : "Reading \(sources.count) library passages…"
+        defer { replyPhase = nil }
+        // Library passages go in the system message; drop the last ones if the prompt won't fit.
+        var used = sources
+        var built = await buildPrompt(context: context, system: system + Self.sourcesBlock(used), history: history)
+        while built == nil && !used.isEmpty {
+            used.removeLast()
+            built = await buildPrompt(context: context, system: system + Self.sourcesBlock(used), history: history)
+        }
+        if used.count < sources.count, let i = messages.firstIndex(where: { $0.id == replyID }) {
+            messages[i].sources = used.isEmpty ? nil : used
+        }
+        guard let built else {
             setReply(replyID, "That message is too long for this phone's memory. Please shorten it and try again.")
             if let index = messages.firstIndex(where: { $0.id == replyID }) { messages[index].isNotice = true }
             return

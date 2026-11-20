@@ -1,4 +1,6 @@
 import SwiftUI
+import SafariServices
+import PhotosUI
 
 struct ContentView: View {
     @StateObject var llamaState = LlamaState()
@@ -15,6 +17,8 @@ struct ContentView: View {
                     text: $draft,
                     isGenerating: llamaState.isGenerating,
                     hasModel: llamaState.hasModel,
+                    canAttach: llamaState.canSendPhotos,
+                    image: $llamaState.attachedImage,
                     onSend: send,
                     onStop: llamaState.stopGenerating
                 )
@@ -25,7 +29,8 @@ struct ContentView: View {
                     VStack(spacing: 1) {
                         Text("Pocket Assistant")
                             .font(.headline)
-                        Text(llamaState.isLoadingModel ? "Loading model…" : (llamaState.loadedModelName ?? "No model loaded"))
+                        Text(llamaState.piActive ? "\(llamaState.piStatus?.modelName ?? "") on the Pi"
+                             : llamaState.isLoadingModel ? "Loading model…" : (llamaState.loadedModelName ?? "No model loaded"))
                             .font(.caption2)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
@@ -70,6 +75,11 @@ struct ContentView: View {
             })
         }
         .navigationViewStyle(StackNavigationViewStyle())
+        // Look for the kit's Pi now and then (it may come into Wi-Fi range at any time).
+        .onAppear { Task { await llamaState.refreshPi() } }
+        .onReceive(Timer.publish(every: 20, on: .main, in: .common).autoconnect()) { _ in
+            if !llamaState.isGenerating { Task { await llamaState.refreshPi() } }
+        }
     }
 
     private func send() {
@@ -206,7 +216,9 @@ private struct ChatTranscript: View {
                         }
                         MessageRow(
                             message: message,
-                            isPending: llamaState.isGenerating && message.id == llamaState.messages.last?.id && message.text.isEmpty
+                            isPending: llamaState.isGenerating && message.id == llamaState.messages.last?.id && message.text.isEmpty,
+                            phase: llamaState.replyPhase,
+                            imageURL: message.imageFile.map(llamaState.imageURL)
                         )
                     }
                     Color.clear
@@ -324,6 +336,9 @@ private struct ChatListView: View {
 private struct MessageRow: View {
     let message: ChatMessage
     let isPending: Bool
+    var phase: String? = nil
+    var imageURL: URL? = nil
+    @State private var openSource: SourceRef?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -331,10 +346,17 @@ private struct MessageRow: View {
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundColor(.secondary)
+            if let imageURL, let image = UIImage(contentsOfFile: imageURL.path) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 220, maxHeight: 220, alignment: .leading)
+                    .cornerRadius(10)
+            }
             if isPending {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text("Thinking…")
+                    Text(phase ?? "Thinking…")
                         .font(.body)
                         .foregroundColor(.secondary)
                 }
@@ -348,6 +370,34 @@ private struct MessageRow: View {
                     .foregroundColor(message.isNotice ? .secondary : .primary)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if message.role == .assistant, let sources = message.sources, !sources.isEmpty, !isPending {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("From the library").font(.caption).fontWeight(.semibold).foregroundColor(.secondary)
+                    ForEach(sources) { source in
+                        Button(action: { openSource = source }) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("[\(source.id)]").font(.caption).foregroundColor(.secondary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(source.title).font(.subheadline).foregroundColor(.accentColor).lineLimit(2)
+                                    Text(source.detail).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                }
+                            }
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                    }
+                }
+                .padding(.top, 4)
+            }
+            if message.role == .assistant, let by = message.answeredBy, !isPending, !message.isNotice {
+                Text(by).font(.caption2).foregroundColor(.secondary)
+            }
+        }
+        .sheet(item: $openSource) { source in
+            if !source.url.isEmpty, let url = URL(string: source.url) {
+                SafariView(url: url)
+            } else {
+                SourceTextView(source: source)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -457,19 +507,59 @@ private struct ChatInputBar: View {
     @Binding var text: String
     let isGenerating: Bool
     let hasModel: Bool
+    var canAttach: Bool = false
+    @Binding var image: UIImage?
     let onSend: () -> Void
     let onStop: () -> Void
 
     @State private var textHeight: CGFloat = 0
+    @State private var choosingSource = false
+    @State private var picker: PickerKind?
     private let minHeight: CGFloat = 38
     private let maxHeight: CGFloat = 132 // about five lines at the default text size
 
     private var canSend: Bool {
-        hasModel && !isGenerating && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        hasModel && !isGenerating && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (canAttach && image != nil))
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+        if canAttach, let image {
+            HStack(spacing: 8) {
+                Image(uiImage: image).resizable().scaledToFill().frame(width: 56, height: 56).clipped().cornerRadius(8)
+                Text("Photo goes with your next message").font(.caption).foregroundColor(.secondary)
+                Spacer()
+                Button(action: { self.image = nil }) {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                }
+                .accessibility(label: Text("Remove photo"))
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+        }
         HStack(alignment: .bottom, spacing: 8) {
+            if canAttach {
+                Button(action: { choosingSource = true }) {
+                    Image(systemName: "camera.fill").font(.system(size: 22))
+                }
+                .disabled(isGenerating)
+                .accessibility(label: Text("Add a photo"))
+                .padding(.bottom, 7)
+                .actionSheet(isPresented: $choosingSource) {
+                    ActionSheet(title: Text("Add a photo for the Pi's model"), buttons: [
+                        .default(Text("Take Photo")) { picker = .camera },
+                        .default(Text("Choose from Library")) { picker = .library },
+                        .cancel(),
+                    ])
+                }
+                .sheet(item: $picker) { kind in
+                    if kind == .camera {
+                        CameraPicker(image: $image).edgesIgnoringSafeArea(.all)
+                    } else {
+                        LibraryPicker(image: $image)
+                    }
+                }
+            }
             ZStack(alignment: .topLeading) {
                 // Hidden copy of the text, measured to grow the editor (TextEditor can't self-size on iOS 14).
                 Text(text.isEmpty ? " " : text + " ")
@@ -485,7 +575,7 @@ private struct ChatInputBar: View {
                     .font(.body)
                     .disabled(!hasModel)
                 if text.isEmpty {
-                    Text(hasModel ? "Message" : "Load a model to start")
+                    Text(hasModel ? (canAttach ? "Message, or add a photo" : "Message") : "Load a model to start")
                         .font(.body)
                         .foregroundColor(Color(.placeholderText))
                         .padding(.horizontal, 5)
@@ -510,6 +600,7 @@ private struct ChatInputBar: View {
             .accessibility(label: Text(isGenerating ? "Stop" : "Send"))
             .padding(.bottom, 3)
         }
+        }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(.systemBackground))
@@ -532,7 +623,9 @@ private struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Model")) {
+                KitPiSection(llamaState: llamaState)
+
+                Section(header: Text("Model on This Phone")) {
                     HStack {
                         Text("Loaded")
                         Spacer()
@@ -578,7 +671,7 @@ private struct SettingsView: View {
                     Button(llamaState.isTuning ? "Testing…" : "Run Speed Test") {
                         Task { await llamaState.tuneThreads() }
                     }
-                    .disabled(!llamaState.hasModel || llamaState.isGenerating)
+                    .disabled(!llamaState.hasLocalModel || llamaState.isGenerating)
                     if let report = llamaState.tuningReport {
                         Text(report)
                             .font(.footnote)
@@ -829,5 +922,193 @@ private enum Markdown {
         }
         flush()
         return out
+    }
+}
+
+
+// MARK: - Photos and links
+
+private enum PickerKind: Identifiable { case camera, library; var id: Int { self == .camera ? 0 : 1 } }
+
+/// The camera (UIImagePickerController); falls back to the library when there's no camera.
+private struct CameraPicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    @Environment(\.presentationMode) private var presentationMode
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+        init(_ parent: CameraPicker) { self.parent = parent }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            parent.image = info[.originalImage] as? UIImage
+            parent.presentationMode.wrappedValue.dismiss()
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.presentationMode.wrappedValue.dismiss()
+        }
+    }
+}
+
+/// The photo library (PHPicker: no photo-library permission needed).
+private struct LibraryPicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    @Environment(\.presentationMode) private var presentationMode
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ controller: PHPickerViewController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: LibraryPicker
+        init(_ parent: LibraryPicker) { self.parent = parent }
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            parent.presentationMode.wrappedValue.dismiss()
+            guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else { return }
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                DispatchQueue.main.async { self.parent.image = object as? UIImage }
+            }
+        }
+    }
+}
+
+/// In-app browser for library sources (pages served by the Pi).
+private struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> SFSafariViewController { SFSafariViewController(url: url) }
+    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
+}
+
+
+// MARK: - Kit Pi settings
+
+private struct KitPiSection: View {
+    @ObservedObject var llamaState: LlamaState
+    @State private var hostDraft = ""
+    @State private var keyDraft = ""
+
+    private var statusText: String {
+        if let swapping = llamaState.piSwapping { return "Switching to \(swapping)… (about a minute)" }
+        if let s = llamaState.piStatus {
+            return "Connected · \(s.modelName)" + (s.vision ? " · sees photos" : "")
+                + (s.booksOK ? " · books" : "")
+        }
+        return llamaState.piChecking ? "Looking for the Pi…" : "Not found"
+    }
+
+    var body: some View {
+        Section(header: Text("Kit Pi"),
+                footer: Text("Join the Pi's Wi-Fi hotspot in Settings › Wi-Fi. When it's in reach, answers come from the Pi's larger model, which can look at photos, and every question is first looked up in the kit's library (books and encyclopedias); the passages used are listed under the answer. Without the Pi, the model on this phone answers.")) {
+            HStack {
+                Image(systemName: llamaState.piStatus != nil ? "checkmark.circle.fill" : "wifi.exclamationmark")
+                    .foregroundColor(llamaState.piStatus != nil ? .green : .secondary)
+                Text(statusText).lineLimit(2)
+                Spacer()
+                if llamaState.piChecking { ProgressView() }
+            }
+            if let note = llamaState.piNote {
+                Text(note).font(.footnote).foregroundColor(.red)
+            }
+            Toggle("Answer with the Pi when connected", isOn: $llamaState.usePi)
+            Toggle("Look things up in the library first", isOn: $llamaState.useLibrary)
+            if let status = llamaState.piStatus, !status.models.isEmpty {
+                Menu {
+                    ForEach(status.models, id: \.self) { file in
+                        Button(action: { Task { await llamaState.swapPiModel(file) } }) {
+                            if (status.modelFile as NSString).lastPathComponent == file {
+                                Label(KitPi.displayName(file), systemImage: "checkmark")
+                            } else {
+                                Text(KitPi.displayName(file))
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("Pi model")
+                        Spacer()
+                        Text(status.modelName).foregroundColor(.secondary)
+                    }
+                }
+                .disabled(llamaState.piSwapping != nil || llamaState.isGenerating)
+            }
+            if llamaState.piStatus != nil && !(llamaState.piStatus?.booksOK ?? false) {
+                Text(llamaState.piBooksKey.isEmpty
+                     ? "The book library needs its access key (below). Encyclopedias work without it."
+                     : "The book library didn't accept the key. Check it below.")
+                    .font(.footnote).foregroundColor(.orange)
+            }
+            HStack {
+                Text("Book key")
+                SecureField("access key or link", text: $keyDraft, onCommit: {
+                    llamaState.piBooksKey = keyDraft
+                    Task { await llamaState.refreshPi() }
+                })
+                .multilineTextAlignment(.trailing)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+            }
+            HStack {
+                Text("Address")
+                TextField(KitPi.defaultHost, text: $hostDraft, onCommit: {
+                    llamaState.piHost = hostDraft.trimmingCharacters(in: .whitespaces)
+                    Task { await llamaState.refreshPi() }
+                })
+                .multilineTextAlignment(.trailing)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+                .keyboardType(.URL)
+            }
+            Button("Check Again") {
+                llamaState.piHost = hostDraft.trimmingCharacters(in: .whitespaces)
+                llamaState.piBooksKey = keyDraft
+                Task { await llamaState.refreshPi() }
+            }
+            .disabled(llamaState.piChecking)
+        }
+        .onAppear { hostDraft = llamaState.piHost; keyDraft = llamaState.piBooksKey }
+    }
+}
+
+
+/// A book passage from the Pi's library, read in the app.
+private struct SourceTextView: View {
+    let source: SourceRef
+    @Environment(\.presentationMode) private var presentationMode
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(source.title).font(.title3).fontWeight(.semibold)
+                    Text(source.detail).font(.subheadline).foregroundColor(.secondary)
+                    Divider()
+                    Text(source.readText ?? source.text)
+                        .font(.system(.body, design: .serif))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding()
+            }
+            .navigationTitle("[\(source.id)] Source")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { presentationMode.wrappedValue.dismiss() }
+                }
+            }
+        }
     }
 }
