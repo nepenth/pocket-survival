@@ -20,9 +20,19 @@ struct KitPiStatus: Equatable {
     var vision: Bool
     var contextTokens: Int
     var models: [String]
+    /// From the Pi's model guide (/srv/kit/model-guide.json via /api/models), by file name.
+    var guide: [String: KitPiModelInfo] = [:]
 
     /// "gemma-3-4b-it-Q4_K_M.gguf" -> "Gemma 3 4B"
     var modelName: String { KitPi.displayName(modelFile) }
+}
+
+/// What a Pi model is for, from the kit's model guide.
+struct KitPiModelInfo: Equatable {
+    var use: String       // "Calculations and engineering math"
+    var bestFor: String   // a sentence
+    var speed: String     // "Photo ~30 s; writes ~3 tokens/s"
+    var vision: Bool
 }
 
 /// A passage the answer can cite. Stored with the reply so the sources stay tappable.
@@ -135,16 +145,22 @@ enum KitPi {
             let modalities = props["modalities"] as? [String: Any]
             let settings = props["default_generation_settings"] as? [String: Any]
             var models: [String] = []
+            var guide: [String: KitPiModelInfo] = [:]
             if let url = URL(string: "http://\(host)/api/models"), let data = await get(url, timeout: 2.5),
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let list = obj["models"] as? [[String: Any]] {
-                models = list.compactMap { $0["name"] as? String }
+                models = list.compactMap { $0["name"] as? String }   // already in the guide's order
+                for m in list {
+                    guard let name = m["name"] as? String else { continue }
+                    guide[name] = KitPiModelInfo(use: m["use"] as? String ?? "", bestFor: m["best_for"] as? String ?? "",
+                                                 speed: m["speed"] as? String ?? "", vision: m["vision"] as? Bool ?? false)
+                }
             }
             let ip = await Task.detached { resolveIPv4(host) }.value ?? host
             let booksOK = await getJSON(booksRequest(ip, "/retrieve?q=water&k=1"), timeout: 3) != nil
             return KitPiStatus(host: host, ip: ip, booksOK: booksOK, modelFile: props["model_path"] as? String ?? "model",
                                vision: modalities?["vision"] as? Bool ?? false,
-                               contextTokens: settings?["n_ctx"] as? Int ?? 4096, models: models)
+                               contextTokens: settings?["n_ctx"] as? Int ?? 4096, models: models, guide: guide)
         }
         return nil
     }

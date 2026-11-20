@@ -1035,13 +1035,18 @@ private struct KitPiSection: View {
             Toggle("Answer with the Pi when connected", isOn: $llamaState.usePi)
             Toggle("Look things up in the library first", isOn: $llamaState.useLibrary)
             if let status = llamaState.piStatus, !status.models.isEmpty {
+                let current = (status.modelFile as NSString).lastPathComponent
                 Menu {
                     ForEach(status.models, id: \.self) { file in
                         Button(action: { Task { await llamaState.swapPiModel(file) } }) {
-                            if (status.modelFile as NSString).lastPathComponent == file {
-                                Label(KitPi.displayName(file), systemImage: "checkmark")
+                            let use = status.guide[file]?.use ?? ""
+                            let title = KitPi.displayName(file) + (use.isEmpty ? "" : " — " + use)
+                            if current == file {
+                                Label(title, systemImage: "checkmark")
+                            } else if status.guide[file]?.vision == true {
+                                Label(title, systemImage: "camera")
                             } else {
-                                Text(KitPi.displayName(file))
+                                Text(title)
                             }
                         }
                     }
@@ -1053,6 +1058,18 @@ private struct KitPiSection: View {
                     }
                 }
                 .disabled(llamaState.piSwapping != nil || llamaState.isGenerating)
+                if let info = status.guide[current], !info.use.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(info.use).font(.subheadline).foregroundColor(.accentColor)
+                        Text(info.bestFor).font(.footnote).foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+                if !status.guide.isEmpty {
+                    NavigationLink(destination: PiModelGuideView(llamaState: llamaState)) {
+                        Text("Which model for what")
+                    }
+                }
             }
             if llamaState.piStatus != nil && !(llamaState.piStatus?.booksOK ?? false) {
                 Text("The Pi's book library isn't answering; encyclopedia lookups still work.")
@@ -1106,5 +1123,44 @@ private struct SourceTextView: View {
                 }
             }
         }
+    }
+}
+
+
+/// The kit Pi's model guide: what each model is for, best first; tap one to load it.
+private struct PiModelGuideView: View {
+    @ObservedObject var llamaState: LlamaState
+
+    var body: some View {
+        List {
+            if let status = llamaState.piStatus {
+                let current = (status.modelFile as NSString).lastPathComponent
+                Section(footer: Text("Best first. Tap a model to load it on the Pi (about a minute). The descriptions come from the kit's model guide on the Pi.")) {
+                    ForEach(status.models, id: \.self) { file in
+                        let info = status.guide[file]
+                        Button(action: { Task { await llamaState.swapPiModel(file) } }) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text(KitPi.displayName(file)).font(.headline).foregroundColor(.primary)
+                                    if info?.vision == true { Image(systemName: "camera").foregroundColor(.secondary) }
+                                    Spacer()
+                                    if current == file { Text("Loaded").font(.caption).foregroundColor(.green) }
+                                }
+                                if let use = info?.use, !use.isEmpty { Text(use).font(.subheadline).foregroundColor(.accentColor) }
+                                if let why = info?.bestFor, !why.isEmpty { Text(why).font(.footnote).foregroundColor(.secondary) }
+                                if let speed = info?.speed, !speed.isEmpty { Text(speed).font(.caption).foregroundColor(.secondary) }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .disabled(current == file || llamaState.piSwapping != nil || llamaState.isGenerating)
+                    }
+                }
+            } else {
+                Text("The Pi isn't connected.").foregroundColor(.secondary)
+            }
+        }
+        .listStyle(InsetGroupedListStyle())
+        .navigationTitle("Which model for what")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
