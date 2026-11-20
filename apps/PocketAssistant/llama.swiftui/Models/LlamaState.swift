@@ -669,7 +669,8 @@ class LlamaState: ObservableObject {
             // Library first (from the Pi's book library and Kiwix), when the Pi is in reach.
             replyStarted = Date()
             var sources: [SourceRef] = []
-            // A photo already costs the Pi about 3 minutes to read, so photo questions skip the library.
+            // Photo questions skip the library: the photo is the subject, and the passages would add
+            // about a minute of reading on the Pi.
             if useLibrary, !question.isEmpty, userMessage.imageFile == nil {
                 if piStatus == nil { await refreshPi() }
                 if let status = piStatus {
@@ -735,7 +736,7 @@ class LlamaState: ObservableObject {
         }
 
         let hasPhoto = turns.last(where: { $0.role == .user })?.imageFile != nil && pi.vision
-        replyPhase = hasPhoto ? "The Pi is looking at the photo (about 3 minutes)…"
+        replyPhase = hasPhoto ? "The Pi is looking at the photo…"
             : sources.isEmpty ? "The Pi is reading…" : "The Pi is reading \(sources.count) library passages (about a minute)…"
         Diagnostics.mark("BEGIN Pi reply (\(systemText.count + turns.reduce(0) { $0 + $1.text.count }) chars, \(sources.count) sources)")
         let t0 = DispatchTime.now().uptimeNanoseconds

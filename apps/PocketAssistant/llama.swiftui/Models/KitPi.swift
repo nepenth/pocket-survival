@@ -289,8 +289,11 @@ enum KitPi {
                      onText: @escaping @MainActor (String) -> Void,
                      onDone: @escaping @MainActor (Error?, [String: Any]?) -> Void) -> ChatStream? {
         guard let url = URL(string: "http://\(host):8080/v1/chat/completions") else { return nil }
+        // No "thinking" pass (Gemma 4, Qwen 3.x): on the Pi's CPU it costs minutes and the answer
+        // would arrive late or, with a reply cap, empty. Templates without the switch ignore it.
         var body: [String: Any] = ["messages": messages, "stream": true, "cache_prompt": true,
-                                   "timings_per_token": false]
+                                   "timings_per_token": false,
+                                   "chat_template_kwargs": ["enable_thinking": false]]
         if let maxTokens { body["max_tokens"] = maxTokens }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -302,9 +305,11 @@ enum KitPi {
         return stream
     }
 
-    /// JPEG data URL for the Pi's vision models (longest side 1024 px).
+    /// JPEG data URL for the Pi's vision models. Longest side 640 px: newer models (Gemma 4,
+    /// Qwen3-VL, LFM2.5-VL) work in proportion to the image size, and at 640 px they read a
+    /// medicine label correctly in 5-25 s on the Pi instead of 2-4 minutes at 1024 px.
     static func imageDataURL(_ image: UIImage) -> String? {
-        let maxSide: CGFloat = 1024
+        let maxSide: CGFloat = 640
         let scale = min(1, maxSide / max(image.size.width, image.size.height))
         let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
         let renderer = UIGraphicsImageRenderer(size: size)
