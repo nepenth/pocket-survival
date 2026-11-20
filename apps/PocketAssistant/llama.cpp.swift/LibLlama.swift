@@ -52,10 +52,12 @@ actor LlamaContext {
     }
 
     deinit {
+        // The context reads its model while it is freed, so free the context first.
+        // Freeing the model first crashed every model switch (SIGSEGV in ~llama_context, build 13).
         llama_sampler_free(sampling)
         llama_batch_free(batch)
-        llama_model_free(model)
         llama_free(context)
+        llama_model_free(model)
         llama_backend_free()
     }
 
